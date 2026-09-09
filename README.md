@@ -30,12 +30,12 @@ npm install
 npm run dev
 ```
 
-La API arranca en `http://localhost:8080`. `GET /health` comprueba el servicio y `GET /v1/capabilities` muestra qué integraciones están habilitadas sin revelar secretos.
+La API arranca en `http://localhost:8080`. `GET /health` comprueba el servicio y `GET /v1/capabilities` muestra qué integraciones están habilitadas sin revelar secretos. `POST /v1/session/bootstrap` está protegido por el puente de identidad servidor a servidor y crea el usuario, la familia y el perfil personal inicial.
 
 ## Railway
 
-El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA consulta `/api/family-care/status`, que actúa como proxy de salud y evita exponer secretos o acceso clínico en el navegador.
+El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA usa proxies propios para la salud del servicio y la sesión; la identidad autenticada y la clave privada nunca se aceptan desde estado controlado por el navegador.
 
-Mantén `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONLY_ENABLED=false` hasta completar autenticación, consentimiento y revisiones de seguridad.
+Mantén `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONLY_ENABLED=false` hasta completar consentimiento, contactos verificados y revisiones de seguridad clínica.
 
 No guardes credenciales en Git ni las envíes por chat. Configúralas directamente en Railway/Cloudflare.

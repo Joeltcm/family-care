@@ -13,16 +13,37 @@ import { Laboratories } from '@/components/family-care/views/laboratories';
 import { Medications } from '@/components/family-care/views/medications';
 import { Records } from '@/components/family-care/views/records';
 import { navigation, profiles, type ProfileId, type SectionId } from '@/lib/demo-data';
+import type { FamilyCareSession } from '@/lib/family-care-session';
+
+const profileColors = ['#245f91', '#8a5d95', '#df765f', '#498477'];
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'FC';
+}
 
 export function FamilyCareApp() {
   const [activeProfile, setActiveProfile] = useState<ProfileId>('familia');
   const [activeSection, setActiveSection] = useState<SectionId>('inicio');
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
+  const [session, setSession] = useState<FamilyCareSession | null>(null);
   const [sosOpen, setSosOpen] = useState(false);
   const [sosSent, setSosSent] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const selectedProfile = profiles.find((profile) => profile.id === activeProfile) ?? profiles[0];
+  const availableProfiles = session
+    ? [
+        { id: 'familia', name: 'Familia', initials: 'FC', color: '#0b6f69' },
+        ...session.patients.map((patient, index) => ({
+          id: patient.id,
+          name: patient.preferredName || patient.legalName,
+          initials: initials(patient.preferredName || patient.legalName),
+          color: profileColors[index % profileColors.length],
+        })),
+      ]
+    : profiles;
+  const selectedProfile = availableProfiles.find((profile) => profile.id === activeProfile) ?? availableProfiles[0];
+  const accountName = session?.user.displayName || 'Joel';
+  const accountSubtitle = session ? 'Cuenta familiar protegida' : 'Administrador familiar';
 
   useEffect(() => {
     const controller = new AbortController();
@@ -34,6 +55,21 @@ export function FamilyCareApp() {
       .then(() => setApiStatus('connected'))
       .catch((error: unknown) => {
         if (!(error instanceof DOMException && error.name === 'AbortError')) setApiStatus('unavailable');
+      });
+    fetch('/api/family-care/session', { method: 'POST', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('session_unavailable');
+        return response.json() as Promise<FamilyCareSession>;
+      })
+      .then((value) => {
+        setSession(value);
+        if (value.created) {
+          setNotice({ text: `Perfil protegido de ${value.user.displayName} creado correctamente.`, tone: 'success' });
+          window.setTimeout(() => setNotice(null), 4200);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) setSession(null);
       });
     return () => controller.abort();
   }, []);
@@ -69,14 +105,14 @@ export function FamilyCareApp() {
           {navigation.map((item) => <button key={item.id} className={activeSection === item.id ? 'nav-item active' : 'nav-item'} type="button" onClick={() => navigate(item.id)}><span className="nav-symbol" aria-hidden="true">{item.symbol}</span>{item.label}{'badge' in item && <span className="nav-badge">{item.badge}</span>}</button>)}
         </nav>
         <div className="sidebar-support"><div className="shield-mark">✓</div><div><strong>Información protegida</strong><span>Acceso familiar privado</span></div></div>
-        <button className="user-card" type="button"><span className="avatar avatar-joel">JT</span><span><strong>Joel</strong><small>Administrador familiar</small></span><span className="more">•••</span></button>
+        <button className="user-card" type="button"><span className="avatar avatar-joel">{initials(accountName)}</span><span><strong>{accountName}</strong><small>{accountSubtitle}</small></span><span className="more">•••</span></button>
       </aside>
 
       <main className="main-content">
         <header className="topbar">
           <button className="mobile-brand" type="button" onClick={() => navigate('inicio')}><Image src="/app-icon.png" alt="" width={34} height={34} priority /><strong>Family Care</strong></button>
-          <div className="profile-switcher" aria-label="Cambiar perfil">{profiles.map((profile) => <button key={profile.id} type="button" className={activeProfile === profile.id ? 'profile-chip active' : 'profile-chip'} onClick={() => setActiveProfile(profile.id)} aria-pressed={activeProfile === profile.id}><span style={{ background: profile.color }}>{profile.initials}</span>{profile.name}</button>)}</div>
-          <div className="top-actions"><ApiStatusChip status={apiStatus} /><button className="icon-button" type="button" aria-label="Buscar">⌕</button><button className="icon-button notification-button" type="button" aria-label="Notificaciones">◌<span /></button></div>
+          <div className="profile-switcher" aria-label="Cambiar perfil">{availableProfiles.map((profile) => <button key={profile.id} type="button" className={activeProfile === profile.id ? 'profile-chip active' : 'profile-chip'} onClick={() => setActiveProfile(profile.id)} aria-pressed={activeProfile === profile.id}><span style={{ background: profile.color }}>{profile.initials}</span>{profile.name}</button>)}</div>
+          <div className="top-actions"><ApiStatusChip status={apiStatus} authenticated={Boolean(session)} /><button className="icon-button" type="button" aria-label="Buscar">⌕</button><button className="icon-button notification-button" type="button" aria-label="Notificaciones">◌<span /></button></div>
         </header>
 
         <div className="dashboard">

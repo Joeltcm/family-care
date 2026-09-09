@@ -4,6 +4,8 @@
 
 - La PWA no conserva expedientes clínicos en el caché del service worker.
 - La API clínica vive como servicio separado en Railway y usa PostgreSQL.
+- El sitio privado aporta una identidad estable mediante encabezados autenticados. Una ruta servidor de la PWA los valida y los transmite a Railway con una clave privada compartida; el cliente nunca puede escoger su identidad.
+- Cada primer acceso crea de forma transaccional un usuario, una familia y un perfil personal, incluyendo permisos de propietario y un evento de auditoría.
 - Cloudflare R2 guarda documentos mediante URLs firmadas de corta duración.
 - Healwave será una fuente de solo lectura mediante un usuario PostgreSQL dedicado, vistas permitidas y `SELECT` únicamente. Family Care no hará migraciones ni escrituras sobre Healwave.
 - DeepSeek queda desactivado por defecto. Solo podrá recibir datos desidentificados, con consentimiento y trazabilidad; nunca tomará decisiones clínicas ni cambiará medicamentos.

@@ -1,0 +1,177 @@
+import type { PoolClient } from 'pg';
+import type { CallerIdentity } from '../auth.js';
+import { database } from '../database.js';
+
+type UserRow = {
+  id: string;
+  email: string;
+  display_name: string;
+};
+
+type FamilyRow = {
+  id: string;
+  name: string;
+  role: 'owner' | 'caregiver' | 'adult' | 'dependent' | 'viewer';
+};
+
+type PatientRow = {
+  id: string;
+  legal_name: string;
+  preferred_name: string | null;
+  birth_date: string | null;
+  blood_type: string | null;
+  linked_user_id: string | null;
+};
+
+export class IdentityConflictError extends Error {}
+
+async function upsertUser(client: PoolClient, identity: CallerIdentity) {
+  const bySubject = await client.query<UserRow>(
+    `SELECT id, email, display_name
+       FROM app_users
+      WHERE auth_subject = $1
+      FOR UPDATE`,
+    [identity.subject],
+  );
+
+  if (bySubject.rowCount) {
+    const updated = await client.query<UserRow>(
+      `UPDATE app_users
+          SET email = $2, display_name = $3, updated_at = now()
+        WHERE id = $1
+        RETURNING id, email, display_name`,
+      [bySubject.rows[0].id, identity.email.toLowerCase(), identity.displayName],
+    );
+    return updated.rows[0];
+  }
+
+  const byEmail = await client.query<UserRow & { auth_subject: string | null }>(
+    `SELECT id, email, display_name, auth_subject
+       FROM app_users
+      WHERE lower(email) = lower($1)
+      FOR UPDATE`,
+    [identity.email],
+  );
+
+  if (byEmail.rowCount) {
+    if (byEmail.rows[0].auth_subject) throw new IdentityConflictError('Email already belongs to another identity.');
+    const claimed = await client.query<UserRow>(
+      `UPDATE app_users
+          SET auth_subject = $2, display_name = $3, updated_at = now()
+        WHERE id = $1
+        RETURNING id, email, display_name`,
+      [byEmail.rows[0].id, identity.subject, identity.displayName],
+    );
+    return claimed.rows[0];
+  }
+
+  const created = await client.query<UserRow>(
+    `INSERT INTO app_users (email, display_name, auth_subject)
+     VALUES ($1, $2, $3)
+     RETURNING id, email, display_name`,
+    [identity.email.toLowerCase(), identity.displayName, identity.subject],
+  );
+  return created.rows[0];
+}
+
+export async function bootstrapSession(identity: CallerIdentity) {
+  if (!database) throw new Error('database_not_configured');
+  const client = await database.connect();
+
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [identity.subject]);
+    const user = await upsertUser(client, identity);
+
+    const membership = await client.query<FamilyRow>(
+      `SELECT f.id, f.name, fm.role
+         FROM family_memberships fm
+         JOIN families f ON f.id = fm.family_id
+        WHERE fm.user_id = $1
+        ORDER BY fm.created_at
+        LIMIT 1`,
+      [user.id],
+    );
+    let family = membership.rows[0];
+    let created = false;
+
+    if (!family) {
+      const createdFamily = await client.query<{ id: string; name: string }>(
+        `INSERT INTO families (name, created_by)
+         VALUES ($1, $2)
+         RETURNING id, name`,
+        [`${identity.displayName} · Familia`, user.id],
+      );
+      await client.query(
+        `INSERT INTO family_memberships
+           (family_id, user_id, role, can_view_all, can_manage_emergency)
+         VALUES ($1, $2, 'owner', true, true)`,
+        [createdFamily.rows[0].id, user.id],
+      );
+      family = { ...createdFamily.rows[0], role: 'owner' };
+      created = true;
+    }
+
+    const ownPatient = await client.query<{ id: string }>(
+      'SELECT id FROM patients WHERE family_id = $1 AND linked_user_id = $2 LIMIT 1',
+      [family.id, user.id],
+    );
+
+    if (!ownPatient.rowCount) {
+      const patient = await client.query<{ id: string }>(
+        `INSERT INTO patients (family_id, linked_user_id, legal_name, preferred_name)
+         VALUES ($1, $2, $3, $3)
+         RETURNING id`,
+        [family.id, user.id, identity.displayName],
+      );
+      await client.query(
+        `INSERT INTO patient_permissions
+           (patient_id, user_id, can_read, can_write, can_share, granted_by)
+         VALUES ($1, $2, true, true, true, $2)
+         ON CONFLICT (patient_id, user_id) DO NOTHING`,
+        [patient.rows[0].id, user.id],
+      );
+      created = true;
+    }
+
+    const patients = await client.query<PatientRow>(
+      `SELECT DISTINCT p.id, p.legal_name, p.preferred_name, p.birth_date, p.blood_type, p.linked_user_id
+         FROM patients p
+         JOIN family_memberships fm ON fm.family_id = p.family_id AND fm.user_id = $2
+         LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
+        WHERE p.family_id = $1
+          AND (fm.can_view_all OR pp.can_read)
+        ORDER BY p.created_at`,
+      [family.id, user.id],
+    );
+
+    if (created) {
+      await client.query(
+        `INSERT INTO audit_events
+           (actor_user_id, family_id, action, resource_type, resource_id, metadata)
+         VALUES ($1, $2, 'account.bootstrap', 'family', $2, '{"source":"chatgpt-sites"}'::jsonb)`,
+        [user.id, family.id],
+      );
+    }
+
+    await client.query('COMMIT');
+    return {
+      user: { id: user.id, email: user.email, displayName: user.display_name },
+      family: { id: family.id, name: family.name, role: family.role },
+      patients: patients.rows.map((patient) => ({
+        id: patient.id,
+        legalName: patient.legal_name,
+        preferredName: patient.preferred_name,
+        birthDate: patient.birth_date,
+        bloodType: patient.blood_type,
+        linkedToCurrentUser: patient.linked_user_id === user.id,
+      })),
+      created,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}

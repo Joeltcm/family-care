@@ -3,12 +3,24 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 import { z } from 'zod';
+import { requireCallerIdentity } from './auth.js';
 import { capabilities, config } from './config.js';
 import { checkDatabase, database } from './database.js';
 import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
+import { bootstrapSession, IdentityConflictError } from './services/session.js';
 
 const app = Fastify({
-  logger: { redact: ['req.headers.authorization', 'req.headers.cookie', 'body', 'response.body'] },
+  logger: {
+    redact: [
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'req.headers.x-family-care-service-key',
+      'req.headers.x-family-care-user-email',
+      'req.headers.x-family-care-user-name',
+      'body',
+      'response.body',
+    ],
+  },
   bodyLimit: 1_048_576,
   trustProxy: true,
 });
@@ -38,6 +50,20 @@ app.get('/v1/demo/dashboard', async () => ({
   metrics: { appointments: 18, hospitalizations: 1, treatments: 4, specialists: 6 },
   disclaimer: 'Datos ficticios. No usar para decisiones médicas.',
 }));
+
+app.post('/v1/session/bootstrap', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+
+  try {
+    return await bootstrapSession(identity);
+  } catch (error) {
+    if (error instanceof IdentityConflictError) {
+      return reply.code(409).send({ error: 'identity_conflict' });
+    }
+    throw error;
+  }
+});
 
 const uploadIntentSchema = z.object({
   patientId: z.string().uuid(),

@@ -1,10 +1,10 @@
-export type ProfileId = 'familia' | 'joel' | 'esposa' | 'hija';
+export type ProfileId = string;
 
 export const profiles = [
-  { id: 'familia' as const, name: 'Familia', initials: 'FC', color: '#0b6f69' },
-  { id: 'joel' as const, name: 'Joel', initials: 'JT', color: '#245f91' },
-  { id: 'esposa' as const, name: 'María', initials: 'MC', color: '#8a5d95' },
-  { id: 'hija' as const, name: 'Sofía', initials: 'SC', color: '#df765f' },
+  { id: 'familia', name: 'Familia', initials: 'FC', color: '#0b6f69' },
+  { id: 'joel', name: 'Joel', initials: 'JT', color: '#245f91' },
+  { id: 'esposa', name: 'María', initials: 'MC', color: '#8a5d95' },
+  { id: 'hija', name: 'Sofía', initials: 'SC', color: '#df765f' },
 ];
 
 export const navigation = [
