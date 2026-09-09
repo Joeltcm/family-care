@@ -1,0 +1,12 @@
+import { PageHeading } from '@/components/family-care/page-heading';
+import type { Notify } from '@/components/family-care/types';
+
+const timeline = [
+  { date: '27 AGO 2026', title: 'Hemograma de control', meta: 'Laboratorio · Sofía', copy: 'Resultados estructurados y documento original asociados al seguimiento hematológico.', tag: 'Laboratorio' },
+  { date: '14 AGO 2026', title: 'Consulta de reumatología', meta: 'Reumatología · María', copy: 'Resumen proveniente de Healwave. Fuente externa marcada como solo lectura.', tag: 'Healwave' },
+  { date: '03 JUL 2026', title: 'Hospitalización', meta: 'Hematología pediátrica · Sofía', copy: 'Episodio con ingreso, alta, indicaciones, medicamentos y documentos relacionados.', tag: 'Hospitalización' },
+];
+
+export function Records({ profile, onNotice }: { profile: string; onNotice: Notify }) {
+  return <><PageHeading eyebrow="EXPEDIENTE LONGITUDINAL" title={`Historia clínica de ${profile}`} copy="Consultas, hospitalizaciones, especialistas, diagnósticos y archivos en una sola línea de tiempo." action={<button className="primary-action" onClick={() => onNotice('Formulario de consulta preparado en modo demostración.')} type="button">＋ Registrar atención</button>} /><div className="content-grid wide-main"><section className="panel module-panel"><div className="filter-row"><button className="filter-pill active" type="button">Todo</button><button className="filter-pill" type="button">Consultas</button><button className="filter-pill" type="button">Hospitalizaciones</button><button className="filter-pill" type="button">Especialistas</button></div><div className="timeline">{timeline.map((entry) => <article className="timeline-item" key={entry.title}><div className="timeline-dot" /><div><span>{entry.date}</span><h2>{entry.title}</h2><p>{entry.meta}</p><small>{entry.copy}</small></div><em>{entry.tag}</em></article>)}</div></section><aside className="panel side-summary"><p className="eyebrow">COBERTURA DEL EXPEDIENTE</p><h2>Información clínica completa</h2>{['Antecedentes y alergias', 'Diagnósticos y condiciones', 'Consultas de cualquier especialidad', 'Hospitalizaciones y procedimientos', 'Recetas, referencias y adjuntos'].map((item) => <p className="check-row" key={item}><span>✓</span>{item}</p>)}<div className="readonly-note"><strong>Healwave</strong><p>La futura integración consultará una fuente secundaria de solo lectura. Family Care nunca escribirá en producción.</p></div></aside></div></>;
+}

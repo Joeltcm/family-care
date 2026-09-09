@@ -4,6 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 import { z } from 'zod';
 import { capabilities, config } from './config.js';
+import { checkDatabase, database } from './database.js';
 import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
 
 const app = Fastify({
@@ -16,7 +17,11 @@ await app.register(cors, { origin: config.APP_ORIGIN, credentials: true });
 await app.register(helmet, { contentSecurityPolicy: false });
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 
-app.get('/health', async () => ({ status: 'ok', service: 'family-care-api', time: new Date().toISOString() }));
+app.get('/health', async (_request, reply) => {
+  const storage = await checkDatabase();
+  if (storage.configured && !storage.connected) return reply.code(503).send({ status: 'degraded', service: 'family-care-api', storage });
+  return { status: 'ok', service: 'family-care-api', storage, time: new Date().toISOString() };
+});
 
 app.get('/v1/capabilities', async () => ({
   capabilities,
@@ -65,3 +70,11 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 await app.listen({ host: '0.0.0.0', port: config.PORT });
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, async () => {
+    await app.close();
+    await database?.end();
+    process.exit(0);
+  });
+}

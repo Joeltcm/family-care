@@ -6,7 +6,7 @@ PWA familiar en español para centralizar expedientes médicos, citas, tratamien
 
 ## Estructura
 
-- `app/` y `lib/`: PWA responsive.
+- `app/`, `components/` y `lib/`: PWA responsive y módulos clínicos.
 - `api/`: API clínica preparada para Railway.
 - `api/db/migrations/`: modelo PostgreSQL versionado.
 - `docs/ARCHITECTURE.md`: límites de seguridad y despliegue.
@@ -34,10 +34,8 @@ La API arranca en `http://localhost:8080`. `GET /health` comprueba el servicio y
 
 ## Railway
 
-1. Crear un nuevo servicio desde este repositorio y fijar el directorio raíz en `/api`.
-2. Agregar PostgreSQL al proyecto y enlazar `DATABASE_URL`.
-3. Copiar el resto de las variables desde `api/.env.example` en el panel de Railway.
-4. Ejecutar `api/db/migrations/0001_initial.sql` con un usuario de migraciones.
-5. Mantener `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONLY_ENABLED=false` hasta completar sus revisiones de seguridad.
+El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA consulta `/api/family-care/status`, que actúa como proxy de salud y evita exponer secretos o acceso clínico en el navegador.
+
+Mantén `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONLY_ENABLED=false` hasta completar autenticación, consentimiento y revisiones de seguridad.
 
 No guardes credenciales en Git ni las envíes por chat. Configúralas directamente en Railway/Cloudflare.

@@ -1,0 +1,6 @@
+import { PageHeading } from '@/components/family-care/page-heading';
+import type { Notify } from '@/components/family-care/types';
+
+export function Insurance({ onNotice }: { onNotice: Notify }) {
+  return <><PageHeading eyebrow="SEGUROS" title="Pólizas y coberturas" copy="Vigencia, beneficiarios, autorizaciones, reclamaciones y teléfonos de asistencia." action={<button className="primary-action" type="button" onClick={() => onNotice('Registro de póliza preparado en modo demostración.')}>＋ Agregar póliza</button>} /><div className="content-grid wide-main"><section className="insurance-card"><div><p>SEGURO MÉDICO FAMILIAR</p><h2>Plan de demostración</h2><span>Póliza •••• 2841</span></div><strong>Vigente</strong><footer><span>Renovación<br/><b>31 dic 2026</b></span><span>Deducible<br/><b>B/. 500.00</b></span><span>Asistencia<br/><b>24 horas</b></span></footer></section><aside className="panel side-summary"><p className="eyebrow">ACCESO RÁPIDO</p><h2>Gestiones del seguro</h2>{['Solicitar autorización', 'Registrar reclamación', 'Ver beneficiarios', 'Llamar a asistencia'].map((item) => <button className="insurance-action" type="button" key={item} onClick={() => onNotice(`${item}: acción demostrativa.`)}>{item}<span>›</span></button>)}</aside></div></>;
+}

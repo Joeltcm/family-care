@@ -15,6 +15,9 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
 const localBindingConfig = {
   main: 'vinext/server/app-router-entry',
   compatibility_flags: ['nodejs_compat'],
+  vars: process.env.FAMILY_CARE_API_URL
+    ? { FAMILY_CARE_API_URL: process.env.FAMILY_CARE_API_URL }
+    : {},
   d1_databases: d1
     ? [
         {
