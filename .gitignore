@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -34,6 +35,8 @@ yarn-error.log*
 .vercel
 next-env.d.ts
 /dist/
+/api/dist/
 /.wrangler/
 /outputs/
 /work/
+/graphify-out/
