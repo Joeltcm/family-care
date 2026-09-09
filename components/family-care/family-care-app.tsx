@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { ApiStatusChip, type ApiStatus } from '@/components/family-care/api-status';
+import { ShareRecordModal } from '@/components/family-care/share-record-modal';
 import { SosModal } from '@/components/family-care/sos-modal';
 import type { Notice, Notify } from '@/components/family-care/types';
 import { Calendar } from '@/components/family-care/views/calendar';
@@ -27,6 +28,7 @@ export function FamilyCareApp() {
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
   const [session, setSession] = useState<FamilyCareSession | null>(null);
   const [sosOpen, setSosOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [sosSent, setSosSent] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -42,6 +44,7 @@ export function FamilyCareApp() {
       ]
     : profiles;
   const selectedProfile = availableProfiles.find((profile) => profile.id === activeProfile) ?? availableProfiles[0];
+  const selectedPatient = session?.patients.find((patient) => patient.id === activeProfile);
   const accountName = session?.user.displayName || 'Joel';
   const accountSubtitle = session ? 'Cuenta familiar protegida' : 'Administrador familiar';
 
@@ -117,7 +120,7 @@ export function FamilyCareApp() {
 
         <div className="dashboard">
           {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} onNavigate={navigate} />}
-          {activeSection === 'expedientes' && <Records profile={selectedProfile.name} onNotice={showNotice} />}
+          {activeSection === 'expedientes' && <Records profile={selectedProfile.name} onNotice={showNotice} canShare={Boolean(selectedPatient?.canShare)} onShare={() => setShareOpen(true)} />}
           {activeSection === 'laboratorios' && <Laboratories profile={selectedProfile.name} onUpload={() => fileInput.current?.click()} />}
           {activeSection === 'medicamentos' && <Medications onNotice={showNotice} />}
           {activeSection === 'calendario' && <Calendar onNotice={showNotice} />}
@@ -130,6 +133,7 @@ export function FamilyCareApp() {
       </main>
       {notice && <div className={`toast ${notice.tone}`} role="status">✓ {notice.text}</div>}
       {sosOpen && <SosModal person={selectedProfile.name} sent={sosSent} onSend={sendSimulatedSos} onClose={() => setSosOpen(false)} />}
+      {shareOpen && selectedPatient && <ShareRecordModal patientId={selectedPatient.id} patientName={selectedProfile.name} onNotice={showNotice} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }

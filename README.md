@@ -32,6 +32,19 @@ npm run dev
 
 La API arranca en `http://localhost:8080`. `GET /health` comprueba el servicio y `GET /v1/capabilities` muestra qué integraciones están habilitadas sin revelar secretos. `POST /v1/session/bootstrap` está protegido por el puente de identidad servidor a servidor y crea el usuario, la familia y el perfil personal inicial.
 
+## Enlace médico temporal
+
+Desde un perfil protegido, **Expedientes → Compartir con médico** crea un enlace de solo lectura con caducidad de 15 minutos a 24 horas. El médico debe introducir un PIN de seis dígitos y puede imprimir la vista o guardarla como PDF desde el diálogo del navegador.
+
+- El token aleatorio y el PIN nunca se guardan en texto plano.
+- El PIN debe enviarse por un canal diferente al enlace.
+- Diez intentos incorrectos bloquean el enlace.
+- El propietario puede revocarlo antes de su vencimiento.
+- La vista excluye pólizas, auditoría, identificadores externos y documentos originales.
+- Cada creación, acceso y revocación genera un evento de auditoría.
+
+Configura `PUBLIC_API_URL` con la URL HTTPS pública del servicio API para que los enlaces generados sean válidos.
+
 ## Railway
 
 El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA usa proxies propios para la salud del servicio y la sesión; la identidad autenticada y la clave privada nunca se aceptan desde estado controlado por el navegador.

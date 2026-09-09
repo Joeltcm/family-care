@@ -6,8 +6,17 @@ import { z } from 'zod';
 import { requireCallerIdentity } from './auth.js';
 import { capabilities, config } from './config.js';
 import { checkDatabase, database } from './database.js';
+import { renderClinicalRecord, renderShareGate } from './share-page.js';
 import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
 import { bootstrapSession, IdentityConflictError } from './services/session.js';
+import {
+  createMedicalRecordShare,
+  getMedicalShareGate,
+  openMedicalRecordShare,
+  revokeMedicalRecordShare,
+  SharePermissionError,
+  ShareUnavailableError,
+} from './services/shares.js';
 
 const app = Fastify({
   logger: {
@@ -63,6 +72,69 @@ app.post('/v1/session/bootstrap', { config: { rateLimit: { max: 30, timeWindow: 
     }
     throw error;
   }
+});
+
+const createShareSchema = z.object({
+  patientId: z.string().uuid(),
+  expiresInMinutes: z.union([z.literal(15), z.literal(60), z.literal(240), z.literal(1440)]),
+});
+
+app.post('/v1/shares', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const parsed = createShareSchema.safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'invalid_share_request' });
+  try {
+    return await createMedicalRecordShare(identity, parsed.data.patientId, parsed.data.expiresInMinutes);
+  } catch (error) {
+    if (error instanceof SharePermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof ShareUnavailableError) return reply.code(503).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.delete('/v1/shares/:shareId', async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const parsed = z.object({ shareId: z.string().uuid() }).safeParse(request.params);
+  if (!parsed.success) return reply.code(400).send({ error: 'invalid_share_id' });
+  try {
+    return await revokeMedicalRecordShare(identity, parsed.data.shareId);
+  } catch (error) {
+    if (error instanceof SharePermissionError) return reply.code(404).send({ error: error.message });
+    if (error instanceof ShareUnavailableError) return reply.code(503).send({ error: error.message });
+    throw error;
+  }
+});
+
+const shareTokenSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) });
+const sharePinSchema = z.object({ pin: z.string().regex(/^\d{6}$/) });
+const shareHeaders = {
+  'cache-control': 'private, no-store, max-age=0',
+  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+  'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff',
+  'x-robots-tag': 'noindex, nofollow, noarchive',
+};
+
+app.get('/share/:token', { logLevel: 'silent', config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
+  const parsed = shareTokenSchema.safeParse(request.params);
+  if (!parsed.success) return reply.code(404).headers(shareHeaders).type('text/html').send(renderShareGate(false));
+  const gate = await getMedicalShareGate(parsed.data.token);
+  return reply.headers(shareHeaders).type('text/html').send(renderShareGate(gate.available, gate.expiresAt));
+});
+
+app.post('/share/:token', { logLevel: 'silent', config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  const token = shareTokenSchema.safeParse(request.params);
+  const body = sharePinSchema.safeParse(request.body);
+  if (!token.success || !body.success) return reply.code(400).headers(shareHeaders).type('text/html').send(renderShareGate(Boolean(token.success), undefined, 'PIN inválido.'));
+  const result = await openMedicalRecordShare(token.data.token, body.data.pin);
+  if (result.status === 'ok') return reply.headers(shareHeaders).type('text/html').send(renderClinicalRecord(result));
+  if (result.status === 'invalid_pin') {
+    const gate = await getMedicalShareGate(token.data.token);
+    return reply.code(401).headers(shareHeaders).type('text/html').send(renderShareGate(gate.available, gate.expiresAt, 'PIN incorrecto.'));
+  }
+  return reply.code(410).headers(shareHeaders).type('text/html').send(renderShareGate(false));
 });
 
 const uploadIntentSchema = z.object({

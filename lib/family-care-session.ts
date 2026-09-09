@@ -16,6 +16,7 @@ export type FamilyCareSession = {
     birthDate: string | null;
     bloodType: string | null;
     linkedToCurrentUser: boolean;
+    canShare: boolean;
   }>;
   created: boolean;
 };

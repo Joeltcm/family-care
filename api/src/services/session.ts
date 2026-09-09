@@ -21,6 +21,7 @@ type PatientRow = {
   birth_date: string | null;
   blood_type: string | null;
   linked_user_id: string | null;
+  can_share: boolean;
 };
 
 export class IdentityConflictError extends Error {}
@@ -135,7 +136,8 @@ export async function bootstrapSession(identity: CallerIdentity) {
     }
 
     const patients = await client.query<PatientRow>(
-      `SELECT DISTINCT p.id, p.legal_name, p.preferred_name, p.birth_date, p.blood_type, p.linked_user_id
+      `SELECT DISTINCT p.id, p.legal_name, p.preferred_name, p.birth_date, p.blood_type, p.linked_user_id,
+              (p.linked_user_id = $2 OR COALESCE(pp.can_share, false)) AS can_share
          FROM patients p
          JOIN family_memberships fm ON fm.family_id = p.family_id AND fm.user_id = $2
          LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
@@ -165,6 +167,7 @@ export async function bootstrapSession(identity: CallerIdentity) {
         birthDate: patient.birth_date,
         bloodType: patient.blood_type,
         linkedToCurrentUser: patient.linked_user_id === user.id,
+        canShare: patient.can_share,
       })),
       created,
     };
