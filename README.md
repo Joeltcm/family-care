@@ -2,7 +2,7 @@
 
 PWA familiar en español para centralizar expedientes médicos, citas, tratamientos, laboratorios, documentos, seguros y alertas de emergencia.
 
-> El contenido visible actualmente es demostrativo. No sustituye atención médica, no interpreta resultados como diagnóstico y no realiza llamadas reales.
+> Family Care no sustituye atención médica, no interpreta resultados como diagnóstico y no realiza llamadas reales mientras el SOS permanezca en simulación.
 
 ## Estructura
 
@@ -60,10 +60,33 @@ vinculados a la cuenta. Para habilitarlos se exige confirmar la autorización;
 el consentimiento queda registrado sin copiar el contenido clínico al evento
 de auditoría.
 
+## Consultas y laboratorios
+
+Los perfiles con permiso de escritura pueden registrar consultas, urgencias,
+procedimientos, terapias y hospitalizaciones. Cada atención queda vinculada al
+paciente, al usuario que la registró y a un evento de auditoría.
+
+El módulo de laboratorios permite transcribir y revisar hemogramas y marcadores
+de seguimiento, guardar unidad y rango de referencia del laboratorio, comparar
+su evolución por fecha y adjuntar el informe original. Las marcas de rango son
+descriptivas; no constituyen diagnóstico ni recomendación terapéutica.
+
+## Documentos y compresión
+
+Los documentos clínicos se guardan en el binding privado `MEDICAL_FILES` de R2
+y su metadata relacional se conserva en PostgreSQL. Para fotografías grandes,
+el navegador genera una vista WebP de hasta 2200 px cuando representa un ahorro
+real; el original clínico permanece intacto. Las cargas repetidas del mismo
+archivo y paciente usan una clave basada en SHA-256 para evitar duplicar bytes.
+
+Los archivos solo se descargan después de validar identidad y permiso de
+lectura. El límite por variante es 25 MB y los formatos permitidos son PDF,
+JPEG, PNG y WebP.
+
 ## Railway
 
 El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA usa proxies propios para la salud del servicio y la sesión; la identidad autenticada y la clave privada nunca se aceptan desde estado controlado por el navegador.
 
-Mantén `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONLY_ENABLED=false` hasta completar consentimiento, contactos verificados y revisiones de seguridad clínica.
+Mantén `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONLY_ENABLED=false` hasta completar consentimiento, contactos verificados y revisiones de seguridad clínica. El almacenamiento de archivos de la PWA lo administra Sites mediante R2; las variables `R2_*` de Railway quedan reservadas para una futura integración directa de la API.
 
 No guardes credenciales en Git ni las envíes por chat. Configúralas directamente en Railway/Cloudflare.

@@ -222,6 +222,18 @@ button { color: inherit; }
 .profile-modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
 .profile-modal-actions > button:first-child { border: 1px solid #d6e2e0; border-radius: 11px; padding: 11px 16px; background: white; color: #667d83; font-size: 10px; font-weight: 700; cursor: pointer; }
 .primary-action:disabled { cursor: wait; opacity: .6; }
+.compact-modal { width: min(590px, 100%); }
+.lab-modal { width: min(850px, 100%); }
+.file-field input { border-style: dashed; background: #f8fbfa; cursor: pointer; }
+.file-field small { color: #809297; font-size: 8px; }
+.lab-entry-table { margin-top: 18px; overflow-x: auto; border: 1px solid #e1eae8; border-radius: 14px; }
+.lab-entry-head, .lab-entry-row { display: grid; min-width: 690px; grid-template-columns: minmax(150px, 1.3fr) repeat(4, minmax(88px, .7fr)); gap: 8px; align-items: center; padding: 9px 12px; }
+.lab-entry-head { background: #f3f8f7; color: #7b8f93; font-size: 8px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.lab-entry-row { border-top: 1px solid #edf2f1; }
+.lab-entry-row strong { display: flex; color: #33535d; font-size: 9px; flex-direction: column; }
+.lab-entry-row strong small { margin-top: 2px; color: #92a2a5; font-size: 7px; }
+.lab-entry-row input { min-width: 0; border: 1px solid #d9e5e2; border-radius: 9px; padding: 9px; color: #294751; font-size: 9px; }
+.lab-file { margin-top: 15px; }
 .toast.warning { border-color: #ead7af; background: #fff9ec; color: #805f26; }
 .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 16px; align-items: start; }
 .wide-main { margin-top: 4px; }
@@ -229,6 +241,10 @@ button { color: inherit; }
 .filter-row { display: flex; gap: 7px; overflow-x: auto; padding: 10px 0 17px; }
 .filter-pill { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; background: white; color: var(--muted); font-size: 9px; font-weight: 700; cursor: pointer; }
 .filter-pill.active { border-color: #b9ddd7; background: var(--teal-soft); color: var(--teal); }
+.marker-tabs { display: flex; gap: 7px; overflow-x: auto; padding: 10px 0 5px; }
+.empty-clinical { display: grid; min-height: 250px; place-items: center; align-content: center; padding: 32px; color: #75898e; text-align: center; }
+.empty-clinical strong { color: #31515b; font-size: 14px; }
+.empty-clinical p { max-width: 420px; margin: 7px 0 16px; font-size: 10px; line-height: 1.6; }
 .timeline { border-left: 1px solid #dce7e4; margin-left: 8px; }
 .timeline-item { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 14px; padding: 5px 2px 25px 25px; }
 .timeline-item:last-child { padding-bottom: 7px; }
@@ -254,7 +270,13 @@ button { color: inherit; }
 .readonly-note strong { color: #775987; font-size: 11px; }
 .readonly-note p, .body-copy, .clinical-warning p { margin: 5px 0 0; color: #72868b; font-size: 9px; line-height: 1.55; }
 .safe-chip { border-radius: 999px; padding: 6px 9px; background: #e8f5f1; color: #27755f; font-size: 8px; font-weight: 800; }
+.trend-chip { border-radius: 999px; padding: 6px 9px; background: #e8f5f1; color: #27755f; font-size: 8px; font-weight: 800; }
+.trend-chip.down { background: #fff3ed; color: #ad604e; }
 .lab-chart { display: flex; height: 205px; align-items: flex-end; justify-content: space-around; border-bottom: 1px solid #dce7e4; padding: 16px 6%; background: linear-gradient(180deg, transparent, #f9fcfb); }
+.real-chart { justify-content: flex-start; gap: clamp(22px, 7%, 70px); overflow-x: auto; }
+.real-chart .lab-point { min-width: 58px; }
+.lab-point.abnormal .lab-stick { background: linear-gradient(180deg, #e6a06d, #c45f4d); }
+.lab-point.abnormal .lab-stick i { background: #c45f4d; box-shadow: 0 0 0 1px #e9ae9f; }
 .lab-point { display: flex; height: 175px; flex-direction: column; align-items: center; justify-content: flex-end; gap: 5px; }
 .lab-value { color: #2c6870; font-size: 9px; font-weight: 800; }
 .lab-stick { display: flex; width: 8px; align-items: flex-start; border-radius: 8px; background: linear-gradient(180deg, #5bc8b9, #168278); }
@@ -264,6 +286,9 @@ button { color: inherit; }
 .table-row { display: grid; grid-template-columns: 1fr repeat(3, 1.15fr); gap: 8px; border-bottom: 1px solid #edf2f1; padding: 11px 5px; color: #60777d; font-size: 9px; }
 .table-row strong { color: #274550; }
 .table-head { color: #92a0a4; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.lab-result-head { grid-template-columns: 1fr 1fr 1.4fr 1.1fr; }
+.range-status { width: fit-content; border-radius: 999px; padding: 4px 7px; background: #eff7f5; color: #34776d; font-size: 8px; font-weight: 800; }
+.range-status.outside { background: #fff0ea; color: #b35947; }
 .compression-stat { display: flex; align-items: center; gap: 10px; margin: 18px 0; border-radius: 13px; padding: 14px; background: #eef8f5; }
 .compression-stat strong { color: var(--teal); font-size: 23px; }
 .compression-stat span { color: #607a78; font-size: 9px; }
@@ -298,7 +323,7 @@ button { color: inherit; }
 .document-icon { display: grid; width: 40px; height: 44px; place-items: center; border-radius: 10px; background: #fff0eb; color: #ca6450; font-size: 8px; font-weight: 900; }
 .document-row h2 { margin: 0 0 4px; font-size: 11px; }
 .document-row p, .document-row > span { margin: 0; color: #829499; font-size: 9px; }
-.document-row button { border: 0; background: transparent; color: #809297; cursor: pointer; }
+.document-row button, .document-open { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 9px; background: #f1f7f5; color: var(--teal); font-weight: 900; text-decoration: none; cursor: pointer; }
 .insurance-card { position: relative; overflow: hidden; min-height: 245px; border-radius: 22px; padding: 27px; background: linear-gradient(145deg, #123e4d, #0a716d); color: white; box-shadow: 0 18px 40px rgb(17 69 76 / 18%); }
 .insurance-card::after { position: absolute; right: -50px; top: -65px; width: 210px; height: 210px; border: 1px solid rgb(255 255 255 / 12%); border-radius: 50%; content: ''; }
 .insurance-card > div p { margin: 0 0 19px; color: #95cdc7; font-size: 8px; font-weight: 800; letter-spacing: .12em; }
@@ -358,6 +383,7 @@ button { color: inherit; }
   .secondary-action { width: 100%; }
   .share-modal { padding: 25px 20px; }
   .profile-modal { padding: 25px 20px; }
+  .lab-modal { padding: 25px 16px; }
   .profile-form-grid { grid-template-columns: 1fr; }
   .form-field.full { grid-column: auto; }
   .profile-modal-actions { flex-direction: column-reverse; }

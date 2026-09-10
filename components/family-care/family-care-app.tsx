@@ -1,8 +1,11 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ApiStatusChip, type ApiStatus } from '@/components/family-care/api-status';
+import { DocumentUploadModal } from '@/components/family-care/document-upload-modal';
+import { EncounterModal } from '@/components/family-care/encounter-modal';
+import { HemogramModal } from '@/components/family-care/hemogram-modal';
 import { ProfileEditorModal } from '@/components/family-care/profile-editor-modal';
 import { ShareRecordModal } from '@/components/family-care/share-record-modal';
 import { SosModal } from '@/components/family-care/sos-modal';
@@ -31,9 +34,12 @@ export function FamilyCareApp() {
   const [sosOpen, setSosOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [encounterOpen, setEncounterOpen] = useState(false);
+  const [hemogramOpen, setHemogramOpen] = useState(false);
+  const [documentOpen, setDocumentOpen] = useState(false);
+  const [clinicalRevision, setClinicalRevision] = useState(0);
   const [sosSent, setSosSent] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
   const availableProfiles = session
     ? [
         { id: 'familia', name: 'Familia', initials: 'FC', color: '#0b6f69' },
@@ -84,13 +90,17 @@ export function FamilyCareApp() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  const showNotice: Notify = (text, tone = 'success') => {
+  const showNotice: Notify = useCallback((text, tone = 'success') => {
     setNotice({ text, tone });
     window.setTimeout(() => setNotice(null), 4200);
-  };
+  }, []);
 
-  function handleDemoUpload(file?: File) {
-    if (file) showNotice(`${file.name} preparado para compresión y revisión. No se guardó ningún dato real.`);
+  function clinicalSaved(message: string) {
+    setClinicalRevision((value) => value + 1);
+    setEncounterOpen(false);
+    setHemogramOpen(false);
+    setDocumentOpen(false);
+    showNotice(message);
   }
 
   function sendSimulatedSos() {
@@ -137,14 +147,13 @@ export function FamilyCareApp() {
 
         <div className="dashboard">
           {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} accountName={accountName} onNavigate={navigate} />}
-          {activeSection === 'expedientes' && <Records profile={selectedProfile.name} patient={selectedPatient} onNotice={showNotice} canEdit={Boolean(selectedPatient?.canWrite)} canShare={Boolean(selectedPatient?.canShare)} onEdit={() => setProfileEditorOpen(true)} onShare={() => setShareOpen(true)} />}
-          {activeSection === 'laboratorios' && <Laboratories profile={selectedProfile.name} onUpload={() => fileInput.current?.click()} />}
+          {activeSection === 'expedientes' && <Records profile={selectedProfile.name} patient={selectedPatient} onNotice={showNotice} canEdit={Boolean(selectedPatient?.canWrite)} canShare={Boolean(selectedPatient?.canShare)} onEdit={() => setProfileEditorOpen(true)} onShare={() => setShareOpen(true)} onRegister={() => setEncounterOpen(true)} revision={clinicalRevision} />}
+          {activeSection === 'laboratorios' && <Laboratories profile={selectedProfile.name} patient={selectedPatient} canEdit={Boolean(selectedPatient?.canWrite)} onRegister={() => setHemogramOpen(true)} onNotice={showNotice} revision={clinicalRevision} />}
           {activeSection === 'medicamentos' && <Medications onNotice={showNotice} />}
           {activeSection === 'calendario' && <Calendar onNotice={showNotice} />}
-          {activeSection === 'documentos' && <Documents onUpload={() => fileInput.current?.click()} />}
+          {activeSection === 'documentos' && <Documents patient={selectedPatient} canEdit={Boolean(selectedPatient?.canWrite)} onUpload={() => setDocumentOpen(true)} onNotice={showNotice} revision={clinicalRevision} />}
           {activeSection === 'seguros' && <Insurance onNotice={showNotice} />}
         </div>
-        <input ref={fileInput} className="visually-hidden" type="file" accept="image/*,.pdf" onChange={(event) => handleDemoUpload(event.target.files?.[0])} />
         <button className="sos-button" type="button" onClick={() => setSosOpen(true)} aria-label="Abrir alerta SOS familiar"><span>SOS</span><small>Emergencia</small></button>
         <nav className="mobile-nav" aria-label="Navegación móvil">{navigation.slice(0, 4).map((item) => <button key={item.id} type="button" className={activeSection === item.id ? 'active' : ''} onClick={() => navigate(item.id)}><span>{item.symbol}</span>{item.label}</button>)}</nav>
       </main>
@@ -152,6 +161,9 @@ export function FamilyCareApp() {
       {sosOpen && <SosModal person={selectedProfile.name} sent={sosSent} onSend={sendSimulatedSos} onClose={() => setSosOpen(false)} />}
       {shareOpen && selectedPatient && <ShareRecordModal patientId={selectedPatient.id} patientName={selectedProfile.name} onNotice={showNotice} onClose={() => setShareOpen(false)} />}
       {profileEditorOpen && selectedPatient && <ProfileEditorModal patient={selectedPatient} onSaved={savePatientProfile} onClose={() => setProfileEditorOpen(false)} />}
+      {encounterOpen && selectedPatient && <EncounterModal patient={selectedPatient} onSaved={() => clinicalSaved('Atención guardada en el expediente.')} onClose={() => setEncounterOpen(false)} />}
+      {hemogramOpen && selectedPatient && <HemogramModal patient={selectedPatient} onSaved={clinicalSaved} onClose={() => setHemogramOpen(false)} />}
+      {documentOpen && selectedPatient && <DocumentUploadModal patient={selectedPatient} onSaved={clinicalSaved} onClose={() => setDocumentOpen(false)} />}
     </div>
   );
 }

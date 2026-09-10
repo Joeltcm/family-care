@@ -7,6 +7,15 @@ import { requireCallerIdentity } from './auth.js';
 import { capabilities, config } from './config.js';
 import { checkDatabase, database } from './database.js';
 import { renderClinicalRecord, renderShareGate } from './share-page.js';
+import {
+  ClinicalRecordNotFoundError,
+  ClinicalRecordPermissionError,
+  createDocument,
+  createEncounter,
+  createLabReport,
+  getClinicalRecords,
+  getDocumentVersion,
+} from './services/clinical-records.js';
 import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
 import {
   PatientProfilePermissionError,
@@ -102,6 +111,83 @@ const patientProfileSchema = z.object({
   shareConsentConfirmed: z.boolean().default(false),
 }).strict();
 
+const optionalText = (maximum: number) => z.string().trim().max(maximum).nullable();
+const isoDateTime = z.string().datetime({ offset: true });
+
+const encounterSchema = z.object({
+  occurredAt: isoDateTime,
+  encounterType: z.enum(['consultation', 'emergency', 'hospitalization', 'procedure', 'therapy', 'other']),
+  specialty: optionalText(120),
+  practitionerName: optionalText(160),
+  facilityName: optionalText(180),
+  reason: z.string().trim().min(2).max(500),
+  summary: optionalText(4_000),
+  admittedAt: isoDateTime.nullable(),
+  dischargedAt: isoDateTime.nullable(),
+  dischargeSummary: optionalText(4_000),
+}).strict().superRefine((value, context) => {
+  if (Date.parse(value.occurredAt) > Date.now() + 5 * 60_000) {
+    context.addIssue({ code: 'custom', message: 'future_encounter', path: ['occurredAt'] });
+  }
+  const admission = value.admittedAt || value.occurredAt;
+  if (value.encounterType === 'hospitalization' && value.dischargedAt && Date.parse(admission) > Date.parse(value.dischargedAt)) {
+    context.addIssue({ code: 'custom', message: 'invalid_discharge_date', path: ['dischargedAt'] });
+  }
+});
+
+const labResultSchema = z.object({
+  analyteName: z.string().trim().min(1).max(120),
+  analyteCode: optionalText(40),
+  valueNumeric: z.number().finite().min(-1_000_000).max(1_000_000).nullable(),
+  valueText: optionalText(160),
+  unit: optionalText(40),
+  referenceLow: z.number().finite().min(-1_000_000).max(1_000_000).nullable(),
+  referenceHigh: z.number().finite().min(-1_000_000).max(1_000_000).nullable(),
+}).strict().superRefine((value, context) => {
+  if (value.valueNumeric === null && !value.valueText) {
+    context.addIssue({ code: 'custom', message: 'result_value_required', path: ['valueNumeric'] });
+  }
+  if (value.referenceLow !== null && value.referenceHigh !== null && value.referenceLow > value.referenceHigh) {
+    context.addIssue({ code: 'custom', message: 'invalid_reference_range', path: ['referenceHigh'] });
+  }
+});
+
+const labReportSchema = z.object({
+  collectedAt: isoDateTime,
+  reportedAt: isoDateTime.nullable(),
+  laboratoryName: optionalText(180),
+  panelName: z.string().trim().min(2).max(160),
+  documentId: z.string().uuid().nullable(),
+  results: z.array(labResultSchema).min(1).max(30),
+}).strict().superRefine((value, context) => {
+  if (Date.parse(value.collectedAt) > Date.now() + 5 * 60_000) {
+    context.addIssue({ code: 'custom', message: 'future_collection', path: ['collectedAt'] });
+  }
+});
+
+const documentVersionSchema = z.object({
+  objectKey: z.string().regex(/^medical\/[0-9a-f-]{36}\/[0-9a-f]{64}\/(original|optimized|thumbnail)$/),
+  contentType: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']),
+  sizeBytes: z.number().int().positive().max(25 * 1024 * 1024),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  variant: z.enum(['original', 'optimized', 'thumbnail']),
+}).strict();
+
+const documentSchema = z.object({
+  category: z.enum(['lab', 'prescription', 'referral', 'insurance', 'clinical_note', 'discharge', 'other']),
+  title: z.string().trim().min(2).max(180),
+  capturedAt: isoDateTime.nullable(),
+  versions: z.array(documentVersionSchema).min(1).max(3),
+}).strict().superRefine((value, context) => {
+  if (!value.versions.some((version) => version.variant === 'original')) {
+    context.addIssue({ code: 'custom', message: 'original_required', path: ['versions'] });
+  }
+  const variants = value.versions.map((version) => version.variant);
+  if (new Set(variants).size !== variants.length) {
+    context.addIssue({ code: 'custom', message: 'duplicate_variant', path: ['versions'] });
+  }
+});
+
 app.patch('/v1/patients/:patientId/profile', { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (request, reply) => {
   const identity = requireCallerIdentity(request, reply);
   if (!identity) return;
@@ -115,6 +201,76 @@ app.patch('/v1/patients/:patientId/profile', { config: { rateLimit: { max: 30, t
   } catch (error) {
     if (error instanceof PatientProfilePermissionError) return reply.code(403).send({ error: error.message });
     if (error instanceof PatientShareConsentError) return reply.code(409).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.get('/v1/patients/:patientId/clinical-records', async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid() }).safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ error: 'invalid_patient_id' });
+  try {
+    return await getClinicalRecords(identity, params.data.patientId);
+  } catch (error) {
+    if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/patients/:patientId/encounters', { config: { rateLimit: { max: 60, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid() }).safeParse(request.params);
+  const body = encounterSchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_encounter', issues: body.success ? [] : body.error.issues });
+  try {
+    return reply.code(201).send(await createEncounter(identity, params.data.patientId, body.data));
+  } catch (error) {
+    if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/patients/:patientId/lab-reports', { config: { rateLimit: { max: 60, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid() }).safeParse(request.params);
+  const body = labReportSchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_lab_report', issues: body.success ? [] : body.error.issues });
+  try {
+    return reply.code(201).send(await createLabReport(identity, params.data.patientId, body.data));
+  } catch (error) {
+    if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof ClinicalRecordNotFoundError) return reply.code(404).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/patients/:patientId/documents', { config: { rateLimit: { max: 40, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid() }).safeParse(request.params);
+  const body = documentSchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_document', issues: body.success ? [] : body.error.issues });
+  try {
+    return reply.code(201).send(await createDocument(identity, params.data.patientId, body.data));
+  } catch (error) {
+    if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.get('/v1/documents/:documentId/download', async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ documentId: z.string().uuid() }).safeParse(request.params);
+  const query = z.object({ variant: z.enum(['original', 'optimized']).default('optimized') }).safeParse(request.query);
+  if (!params.success || !query.success) return reply.code(400).send({ error: 'invalid_document_request' });
+  try {
+    return await getDocumentVersion(identity, params.data.documentId, query.data.variant);
+  } catch (error) {
+    if (error instanceof ClinicalRecordNotFoundError) return reply.code(404).send({ error: error.message });
     throw error;
   }
 });
@@ -180,21 +336,6 @@ app.post('/share/:token', { logLevel: 'silent', config: { rateLimit: { max: 10, 
     return reply.code(401).headers(shareHeaders).type('text/html').send(renderShareGate(gate.available, gate.expiresAt, 'PIN incorrecto.'));
   }
   return reply.code(410).headers(shareHeaders).type('text/html').send(renderShareGate(false));
-});
-
-const uploadIntentSchema = z.object({
-  patientId: z.string().uuid(),
-  category: z.enum(['lab', 'prescription', 'referral', 'insurance', 'clinical-note', 'other']),
-  filename: z.string().min(1).max(180),
-  contentType: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']),
-  sizeBytes: z.number().int().positive().max(25 * 1024 * 1024),
-});
-
-app.post('/v1/documents/upload-intent', async (request, reply) => {
-  const parsed = uploadIntentSchema.safeParse(request.body);
-  if (!parsed.success) return reply.code(400).send({ error: 'invalid_upload', issues: parsed.error.issues });
-  if (!capabilities.objectStorage) return reply.code(503).send({ error: 'storage_not_configured', message: 'Configure R2 en Railway para habilitar cargas.' });
-  return reply.code(501).send({ error: 'presigning_not_enabled', message: 'El adaptador R2 debe habilitarse después de configurar autenticación.' });
 });
 
 const sosSchema = z.object({ patientId: z.string().uuid(), locationConsent: z.boolean(), note: z.string().max(280).optional() });
