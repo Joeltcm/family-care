@@ -75,6 +75,35 @@ async function send(subscription: PushSubscription, payload: Record<string, stri
   return webpush.sendNotification(subscription, JSON.stringify(payload), { TTL: 60 * 60 });
 }
 
+export async function sendEmergencyPushes(familyId: string, excludeUserId: string) {
+  if (!database || !capabilities.pushNotifications) return { sent: 0, failed: 0 };
+  const subscriptions = await database.query<{ id: string; subscription: PushSubscription }>(
+    `SELECT ps.id, ps.subscription
+       FROM push_subscriptions ps
+       JOIN family_memberships fm ON fm.user_id = ps.user_id
+      WHERE fm.family_id = $1 AND ps.user_id <> $2 AND ps.disabled_at IS NULL`,
+    [familyId, excludeUserId],
+  );
+  let sent = 0;
+  let failed = 0;
+  for (const row of subscriptions.rows) {
+    try {
+      await send(row.subscription, {
+        title: 'Alerta familiar SOS',
+        body: 'Un integrante de tu familia activó una alerta. Abre Family Care y comunícate de inmediato.',
+        url: '/',
+        tag: `family-care-sos-${Date.now()}`,
+      });
+      sent += 1;
+      await database.query('UPDATE push_subscriptions SET last_success_at = now(), failure_count = 0 WHERE id = $1', [row.id]);
+    } catch {
+      failed += 1;
+      await database.query('UPDATE push_subscriptions SET failure_count = failure_count + 1 WHERE id = $1', [row.id]);
+    }
+  }
+  return { sent, failed };
+}
+
 export async function sendPushTest(identity: CallerIdentity) {
   if (!database) throw new Error('database_not_configured');
   if (!capabilities.pushNotifications) throw new Error('push_not_configured');

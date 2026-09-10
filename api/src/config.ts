@@ -24,6 +24,10 @@ const envSchema = z.object({
   VAPID_PRIVATE_KEY: z.string().min(30).optional(),
   VAPID_SUBJECT: z.string().default('mailto:family-care@example.com'),
   CALL_PROVIDER: z.string().optional(),
+  FIELD_ENCRYPTION_KEY: z.string().min(40).optional(),
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM_NUMBER: z.string().optional(),
 });
 
 export const config = envSchema.parse(process.env);
@@ -36,5 +40,10 @@ export const capabilities = {
   deidentifiedAi: Boolean(config.DEEPSEEK_ENABLED && config.DEEPSEEK_API_KEY),
   healwaveReadOnly: Boolean(config.HEALWAVE_READONLY_ENABLED && config.HEALWAVE_READONLY_DATABASE_URL),
   pushNotifications: Boolean(config.VAPID_PUBLIC_KEY && config.VAPID_PRIVATE_KEY),
-  realSos: !config.SOS_SIMULATION_MODE && Boolean(config.PUSH_PROVIDER && config.CALL_PROVIDER),
+  insuranceVault: Boolean(config.FIELD_ENCRYPTION_KEY),
+  realSos: !config.SOS_SIMULATION_MODE && Boolean(
+    config.VAPID_PUBLIC_KEY && config.VAPID_PRIVATE_KEY
+    && config.CALL_PROVIDER === 'twilio'
+    && config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN && config.TWILIO_FROM_NUMBER,
+  ),
 };

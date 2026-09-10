@@ -161,6 +161,17 @@ button { color: inherit; }
 .sos-modal h2 { margin: 0; color: #203e49; font-size: 23px; letter-spacing: -.03em; }
 .sos-modal > p:not(.eyebrow) { margin: 10px auto 18px; color: #6c8086; font-size: 12px; line-height: 1.6; }
 .sos-contacts { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 18px; color: #71878b; font-size: 10px; }
+.sos-contact-list { display: grid; gap: 8px; margin: 4px 0 12px; text-align: left; }
+.sos-contact-list > div { display: flex; align-items: center; gap: 10px; border: 1px solid #e4ecea; border-radius: 12px; padding: 9px 11px; }
+.sos-contact-list i { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; background: #e8f5f2; color: var(--teal); font-size: 9px; font-style: normal; font-weight: 800; }
+.sos-contact-list span { display: grid; gap: 2px; color: #38555e; font-size: 10px; }
+.sos-contact-list small { color: #7a8c91; font-size: 8px; }
+.sos-contact-list p { margin: 2px 0 8px; text-align: center; }
+.sos-contact-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; text-align: left; }
+.sos-contact-form .primary-action, .sos-contact-form .cancel-button { grid-column: 1 / -1; }
+.sos-location { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0; color: #657b82; font-size: 9px; line-height: 1.45; text-align: left; }
+.sos-location input { margin-top: 1px; accent-color: var(--teal); }
+.sos-confirm { display: grid; gap: 9px; border: 1px solid #f0c7bf; border-radius: 13px; padding: 12px; background: #fff7f5; color: #9d4136; font-size: 10px; }
 .avatar-group { display: flex; }
 .avatar-group i { display: grid; width: 27px; height: 27px; place-items: center; margin-left: -5px; border: 2px solid white; border-radius: 50%; background: #295f75; color: white; font-size: 7px; font-style: normal; font-weight: 800; }
 .send-sos, .test-success { width: 100%; border: 0; border-radius: 12px; padding: 13px; background: #d75b4d; color: white; font-size: 11px; font-weight: 800; }
@@ -381,6 +392,14 @@ button { color: inherit; }
 .insurance-card footer b { color: white; font-size: 10px; }
 .insurance-action { display: flex; width: 100%; align-items: center; justify-content: space-between; border: 0; border-bottom: 1px solid #edf2f1; padding: 11px 2px; background: transparent; color: #536c73; font-size: 10px; cursor: pointer; }
 .insurance-action span { color: var(--teal); font-size: 16px; }
+.insurance-empty { display: grid; min-height: 280px; place-items: center; align-content: center; gap: 8px; border: 1px dashed #bfd7d2; border-radius: 20px; padding: 32px; background: #fbfdfc; color: #667d83; text-align: center; }
+.insurance-empty > span { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 17px; background: #e7f5f2; color: var(--teal); font-size: 22px; }
+.insurance-empty h2 { margin: 4px 0 0; color: #294852; font-size: 18px; }
+.insurance-empty p { max-width: 420px; margin: 0 0 8px; font-size: 10px; line-height: 1.6; }
+.insurance-case { display: grid; gap: 3px; border-bottom: 1px solid #edf2f1; padding: 10px 0; color: #536c73; font-size: 9px; }
+.insurance-case span, .muted-copy { color: #7a8c91; font-size: 9px; line-height: 1.55; }
+.policy-list { display: grid; gap: 10px; margin-top: 18px; }
+.policy-list > div { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #edf2f1; padding-top: 10px; color: #536c73; font-size: 10px; }
 .toast { position: fixed; right: 24px; bottom: 110px; z-index: 120; width: min(360px, calc(100vw - 28px)); border: 1px solid #bce0d9; border-radius: 13px; padding: 13px 15px; background: #f0faf7; color: #286f5f; box-shadow: 0 15px 40px rgb(18 64 69 / 15%); font-size: 10px; font-weight: 700; }
 
 @media (max-width: 1050px) {

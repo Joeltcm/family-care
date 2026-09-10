@@ -47,6 +47,19 @@ import {
   sendPushTest,
   startReminderScheduler,
 } from './services/push-reminders.js';
+import {
+  createInsuranceCase,
+  createPolicy,
+  getInsurance,
+  InsuranceNotFoundError,
+  InsurancePermissionError,
+} from './services/insurance.js';
+import {
+  createEmergencyContact,
+  EmergencyPermissionError,
+  getEmergencySetup,
+  triggerEmergency,
+} from './services/emergency.js';
 
 const app = Fastify({
   logger: {
@@ -267,6 +280,30 @@ const pushSubscriptionSchema = z.object({
 
 const removePushSchema = z.object({ endpoint: z.string().url().max(2_048) }).strict();
 
+const insurancePolicySchema = z.object({
+  insurerName: z.string().trim().min(2).max(160),
+  policyNumber: z.string().trim().min(3).max(120),
+  planName: optionalText(160),
+  effectiveDate: dateOnly.nullable(),
+  renewalDate: dateOnly.nullable(),
+  assistancePhone: z.string().trim().max(30).nullable(),
+  notes: optionalText(2_000),
+  beneficiaries: z.array(z.object({
+    patientId: z.string().uuid(), memberNumber: z.string().trim().max(120).nullable(),
+  }).strict()).min(1).max(20),
+}).strict();
+
+const insuranceCaseSchema = z.object({
+  patientId: z.string().uuid(), type: z.enum(['authorization', 'claim']),
+  status: z.string().trim().min(2).max(80), referenceNumber: z.string().trim().max(120).nullable(),
+  amount: z.number().nonnegative().max(100_000_000).nullable(), submittedAt: isoDateTime.nullable(),
+}).strict();
+
+const emergencyContactSchema = z.object({
+  name: z.string().trim().min(2).max(160), relationship: z.string().trim().max(100).nullable(),
+  phone: z.string().regex(/^\+[1-9]\d{7,14}$/), priority: z.number().int().min(1).max(20),
+}).strict();
+
 app.patch('/v1/patients/:patientId/profile', { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (request, reply) => {
   const identity = requireCallerIdentity(request, reply);
   if (!identity) return;
@@ -398,6 +435,66 @@ app.post('/v1/push/test', { config: { rateLimit: { max: 3, timeWindow: '1 hour' 
   return sendPushTest(identity);
 });
 
+app.get('/v1/insurance', async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  if (!capabilities.insuranceVault) return reply.code(503).send({ error: 'insurance_vault_not_configured' });
+  try { return await getInsurance(identity); }
+  catch (error) {
+    if (error instanceof InsurancePermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/insurance/policies', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  if (!capabilities.insuranceVault) return reply.code(503).send({ error: 'insurance_vault_not_configured' });
+  const body = insurancePolicySchema.safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_insurance_policy', issues: body.error.issues });
+  try { return reply.code(201).send(await createPolicy(identity, body.data)); }
+  catch (error) {
+    if (error instanceof InsurancePermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/insurance/policies/:policyId/cases', { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ policyId: z.string().uuid() }).safeParse(request.params);
+  const body = insuranceCaseSchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_insurance_case' });
+  try { return reply.code(201).send(await createInsuranceCase(identity, params.data.policyId, body.data)); }
+  catch (error) {
+    if (error instanceof InsurancePermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof InsuranceNotFoundError) return reply.code(404).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.get('/v1/emergency/setup', async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  try { return await getEmergencySetup(identity); }
+  catch (error) {
+    if (error instanceof EmergencyPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/emergency/contacts', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const body = emergencyContactSchema.safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_emergency_contact', issues: body.error.issues });
+  try { return reply.code(201).send(await createEmergencyContact(identity, body.data)); }
+  catch (error) {
+    if (error instanceof EmergencyPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
 app.post('/v1/patients/:patientId/encounters', { config: { rateLimit: { max: 60, timeWindow: '1 hour' } } }, async (request, reply) => {
   const identity = requireCallerIdentity(request, reply);
   if (!identity) return;
@@ -518,14 +615,22 @@ app.post('/share/:token', { logLevel: 'silent', config: { rateLimit: { max: 10, 
   return reply.code(410).headers(shareHeaders).type('text/html').send(renderShareGate(false));
 });
 
-const sosSchema = z.object({ patientId: z.string().uuid(), locationConsent: z.boolean(), note: z.string().max(280).optional() });
+const sosSchema = z.object({
+  patientId: z.string().uuid(),
+  location: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), accuracy: z.number().nonnegative().max(100_000) }).strict().nullable(),
+  note: z.string().trim().max(280).nullable(),
+}).strict();
 
-app.post('/v1/emergency/events', async (request, reply) => {
+app.post('/v1/emergency/events', { config: { rateLimit: { max: 3, timeWindow: '10 minutes' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
   const parsed = sosSchema.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'invalid_sos', issues: parsed.error.issues });
-  if (config.SOS_SIMULATION_MODE) return reply.code(202).send({ mode: 'simulation', notified: 0, callsPlaced: 0 });
-  if (!capabilities.realSos) return reply.code(503).send({ error: 'providers_not_configured' });
-  return reply.code(501).send({ error: 'provider_adapter_pending' });
+  try { return reply.code(config.SOS_SIMULATION_MODE ? 202 : 201).send(await triggerEmergency(identity, parsed.data)); }
+  catch (error) {
+    if (error instanceof EmergencyPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
 });
 
 app.setErrorHandler((error, _request, reply) => {

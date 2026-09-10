@@ -43,7 +43,6 @@ export function FamilyCareApp() {
   const [medicationOpen, setMedicationOpen] = useState(false);
   const [clinicalRevision, setClinicalRevision] = useState(0);
   const [careRevision, setCareRevision] = useState(0);
-  const [sosSent, setSosSent] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const availableProfiles = session
     ? [
@@ -140,11 +139,6 @@ export function FamilyCareApp() {
     else setMedicationOpen(true);
   }
 
-  function sendSimulatedSos() {
-    setSosSent(true);
-    window.setTimeout(() => setSosSent(false), 5000);
-  }
-
   function savePatientProfile(patient: FamilyCarePatient) {
     setSession((current) => current ? {
       ...current,
@@ -189,13 +183,13 @@ export function FamilyCareApp() {
           {activeSection === 'medicamentos' && <Medications patients={session?.patients || []} patient={selectedPatient} onNotice={showNotice} onRegister={() => openCareModal('medication')} onChanged={refreshCare} revision={careRevision} />}
           {activeSection === 'calendario' && <Calendar patients={session?.patients || []} patient={selectedPatient} onNotice={showNotice} onRegister={() => openCareModal('appointment')} onChanged={refreshCare} revision={careRevision} />}
           {activeSection === 'documentos' && <Documents patient={selectedPatient} canEdit={Boolean(selectedPatient?.canWrite)} onUpload={() => setDocumentOpen(true)} onNotice={showNotice} revision={clinicalRevision} />}
-          {activeSection === 'seguros' && <Insurance onNotice={showNotice} />}
+          {activeSection === 'seguros' && <Insurance patients={session?.patients || []} onNotice={showNotice} />}
         </div>
         <button className="sos-button" type="button" onClick={() => setSosOpen(true)} aria-label="Abrir alerta SOS familiar"><span>SOS</span><small>Emergencia</small></button>
         <nav className="mobile-nav" aria-label="Navegación móvil">{navigation.slice(0, 4).map((item) => <button key={item.id} type="button" className={activeSection === item.id ? 'active' : ''} onClick={() => navigate(item.id)}><span>{item.symbol}</span>{item.label}</button>)}</nav>
       </main>
       {notice && <div className={`toast ${notice.tone}`} role="status">✓ {notice.text}</div>}
-      {sosOpen && <SosModal person={selectedProfile.name} sent={sosSent} onSend={sendSimulatedSos} onClose={() => setSosOpen(false)} />}
+      {sosOpen && <SosModal patientId={selectedPatient?.id || null} person={selectedProfile.name} onNotice={(message) => showNotice(message)} onClose={() => setSosOpen(false)} />}
       {shareOpen && selectedPatient && <ShareRecordModal patientId={selectedPatient.id} patientName={selectedProfile.name} onNotice={showNotice} onClose={() => setShareOpen(false)} />}
       {profileEditorOpen && selectedPatient && <ProfileEditorModal patient={selectedPatient} onSaved={savePatientProfile} onClose={() => setProfileEditorOpen(false)} />}
       {encounterOpen && selectedPatient && <EncounterModal patient={selectedPatient} onSaved={() => clinicalSaved('Atención guardada en el expediente.')} onClose={() => setEncounterOpen(false)} />}
