@@ -15,7 +15,7 @@ function size(bytes: number) {
 
 export function Documents({ patient, canEdit, onUpload, onNotice, revision }: { patient?: FamilyCarePatient; canEdit: boolean; onUpload: () => void; onNotice: Notify; revision: number }) {
   const [loaded, setLoaded] = useState<{ patientId: string; records: ClinicalRecords } | null>(null);
-  const records = loaded?.patientId === patient?.id ? loaded.records : emptyClinicalRecords;
+  const records = loaded && loaded.patientId === patient?.id ? loaded.records : emptyClinicalRecords;
   const loading = Boolean(patient && loaded?.patientId !== patient.id);
   useEffect(() => {
     if (!patient) return;

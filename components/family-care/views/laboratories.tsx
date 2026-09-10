@@ -15,7 +15,7 @@ function shortDate(value: string) {
 export function Laboratories({ profile, patient, canEdit, onRegister, onNotice, revision }: { profile: string; patient?: FamilyCarePatient; canEdit: boolean; onRegister: () => void; onNotice: Notify; revision: number }) {
   const [loaded, setLoaded] = useState<{ patientId: string; records: ClinicalRecords } | null>(null);
   const [marker, setMarker] = useState('HGB');
-  const records = loaded?.patientId === patient?.id ? loaded.records : emptyClinicalRecords;
+  const records = loaded && loaded.patientId === patient?.id ? loaded.records : emptyClinicalRecords;
   const loading = Boolean(patient && loaded?.patientId !== patient.id);
 
   useEffect(() => {

@@ -16,7 +16,7 @@ const encounterLabels: Record<string, string> = { consultation: 'Consulta', emer
 export function Records({ profile, patient, onNotice, onShare, onEdit, onRegister, canShare, canEdit, revision }: { profile: string; patient?: FamilyCarePatient; onNotice: Notify; onShare: () => void; onEdit: () => void; onRegister: () => void; canShare: boolean; canEdit: boolean; revision: number }) {
   const [loaded, setLoaded] = useState<{ patientId: string; records: ClinicalRecords } | null>(null);
   const [filter, setFilter] = useState<'all' | 'consultation' | 'hospitalization' | 'lab'>('all');
-  const records = loaded?.patientId === patient?.id ? loaded.records : emptyClinicalRecords;
+  const records = loaded && loaded.patientId === patient?.id ? loaded.records : emptyClinicalRecords;
   const loading = Boolean(patient && loaded?.patientId !== patient.id);
 
   useEffect(() => {
