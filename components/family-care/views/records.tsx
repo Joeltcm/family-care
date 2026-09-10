@@ -2,9 +2,9 @@ import { PageHeading } from '@/components/family-care/page-heading';
 import type { Notify } from '@/components/family-care/types';
 
 const timeline = [
-  { date: '27 AGO 2026', title: 'Hemograma de control', meta: 'Laboratorio · Sofía', copy: 'Resultados estructurados y documento original asociados al seguimiento hematológico.', tag: 'Laboratorio' },
-  { date: '14 AGO 2026', title: 'Consulta de reumatología', meta: 'Reumatología · María', copy: 'Resumen proveniente de Healwave. Fuente externa marcada como solo lectura.', tag: 'Healwave' },
-  { date: '03 JUL 2026', title: 'Hospitalización', meta: 'Hematología pediátrica · Sofía', copy: 'Episodio con ingreso, alta, indicaciones, medicamentos y documentos relacionados.', tag: 'Hospitalización' },
+  { date: '27 AGO 2026', title: 'Hemograma de control', meta: 'Laboratorio · Lia Joan', copy: 'Resultados estructurados y documento original asociados al seguimiento hematológico.', tag: 'Laboratorio' },
+  { date: '14 AGO 2026', title: 'Consulta de reumatología', meta: 'Reumatología · Eileen Patricia', copy: 'Resumen proveniente de Healwave. Fuente externa marcada como solo lectura.', tag: 'Healwave' },
+  { date: '03 JUL 2026', title: 'Hospitalización', meta: 'Hematología pediátrica · Lia Joan', copy: 'Episodio con ingreso, alta, indicaciones, medicamentos y documentos relacionados.', tag: 'Hospitalización' },
 ];
 
 export function Records({ profile, onNotice, onShare, canShare }: { profile: string; onNotice: Notify; onShare: () => void; canShare: boolean }) {

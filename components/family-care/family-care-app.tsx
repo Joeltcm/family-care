@@ -45,7 +45,7 @@ export function FamilyCareApp() {
     : profiles;
   const selectedProfile = availableProfiles.find((profile) => profile.id === activeProfile) ?? availableProfiles[0];
   const selectedPatient = session?.patients.find((patient) => patient.id === activeProfile);
-  const accountName = session?.user.displayName || 'Joel';
+  const accountName = session?.patients.find((patient) => patient.linkedToCurrentUser)?.preferredName || session?.user.displayName || 'Diógenes Joel';
   const accountSubtitle = session ? 'Cuenta familiar protegida' : 'Administrador familiar';
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export function FamilyCareApp() {
         </header>
 
         <div className="dashboard">
-          {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} onNavigate={navigate} />}
+          {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} accountName={accountName} onNavigate={navigate} />}
           {activeSection === 'expedientes' && <Records profile={selectedProfile.name} onNotice={showNotice} canShare={Boolean(selectedPatient?.canShare)} onShare={() => setShareOpen(true)} />}
           {activeSection === 'laboratorios' && <Laboratories profile={selectedProfile.name} onUpload={() => fileInput.current?.click()} />}
           {activeSection === 'medicamentos' && <Medications onNotice={showNotice} />}

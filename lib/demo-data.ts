@@ -2,9 +2,9 @@ export type ProfileId = string;
 
 export const profiles = [
   { id: 'familia', name: 'Familia', initials: 'FC', color: '#0b6f69' },
-  { id: 'joel', name: 'Joel', initials: 'JT', color: '#245f91' },
-  { id: 'esposa', name: 'María', initials: 'MC', color: '#8a5d95' },
-  { id: 'hija', name: 'Sofía', initials: 'SC', color: '#df765f' },
+  { id: 'joel', name: 'Diógenes Joel', initials: 'DG', color: '#245f91' },
+  { id: 'esposa', name: 'Eileen Patricia', initials: 'EP', color: '#8a5d95' },
+  { id: 'hija', name: 'Lia Joan', initials: 'LJ', color: '#df765f' },
 ];
 
 export const navigation = [
@@ -27,9 +27,9 @@ export const metrics = [
 ];
 
 export const appointments = [
-  { day: '12', month: 'SEP', time: '9:30 a. m.', title: 'Control de hematología', person: 'Sofía', specialty: 'Hematología pediátrica', place: 'Hospital Pediátrico', tone: 'coral' },
-  { day: '18', month: 'SEP', time: '3:00 p. m.', title: 'Consulta de reumatología', person: 'María', specialty: 'Reumatología', place: 'Clínica San Fernando', tone: 'violet' },
-  { day: '25', month: 'SEP', time: '7:00 a. m.', title: 'Laboratorios de control', person: 'Joel', specialty: 'Medicina preventiva', place: 'Laboratorio central', tone: 'blue' },
+  { day: '12', month: 'SEP', time: '9:30 a. m.', title: 'Control de hematología', person: 'Lia Joan', specialty: 'Hematología pediátrica', place: 'Hospital Pediátrico', tone: 'coral' },
+  { day: '18', month: 'SEP', time: '3:00 p. m.', title: 'Consulta de reumatología', person: 'Eileen Patricia', specialty: 'Reumatología', place: 'Clínica San Fernando', tone: 'violet' },
+  { day: '25', month: 'SEP', time: '7:00 a. m.', title: 'Laboratorios de control', person: 'Diógenes Joel', specialty: 'Medicina preventiva', place: 'Laboratorio central', tone: 'blue' },
 ];
 
 export const monthlyVisits = [4, 7, 5, 9, 6, 11, 8, 13, 7, 10, 5, 8];
@@ -42,12 +42,12 @@ export const hemogramSeries = [
 ];
 
 export const medications = [
-  { name: 'Medicamento de demostración A', person: 'Sofía', schedule: 'Según indicación médica', status: 'Próxima dosis 8:00 p. m.', tone: 'coral' },
-  { name: 'Medicamento de demostración B', person: 'María', schedule: 'Plan registrado en Healwave', status: 'Solo lectura', tone: 'violet' },
+  { name: 'Medicamento de demostración A', person: 'Lia Joan', schedule: 'Según indicación médica', status: 'Próxima dosis 8:00 p. m.', tone: 'coral' },
+  { name: 'Medicamento de demostración B', person: 'Eileen Patricia', schedule: 'Plan registrado en Healwave', status: 'Solo lectura', tone: 'violet' },
 ];
 
 export const documents = [
-  { name: 'Hemograma · 27 ago 2026', type: 'PDF comprimido', person: 'Sofía', size: '420 KB' },
-  { name: 'Referencia a hematología', type: 'Imagen optimizada', person: 'Sofía', size: '680 KB' },
+  { name: 'Hemograma · 27 ago 2026', type: 'PDF comprimido', person: 'Lia Joan', size: '420 KB' },
+  { name: 'Referencia a hematología', type: 'Imagen optimizada', person: 'Lia Joan', size: '680 KB' },
   { name: 'Póliza médica familiar', type: 'PDF original', person: 'Familia', size: '1.2 MB' },
 ];

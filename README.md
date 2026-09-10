@@ -45,6 +45,10 @@ Desde un perfil protegido, **Expedientes → Compartir con médico** crea un enl
 
 Configura `PUBLIC_API_URL` con la URL HTTPS pública del servicio API para que los enlaces generados sean válidos.
 
+Los nombres legales de la familia se inyectan mediante las variables privadas
+`FAMILY_CARE_OWNER_LEGAL_NAME`, `FAMILY_CARE_SPOUSE_LEGAL_NAME` y
+`FAMILY_CARE_CHILD_LEGAL_NAME`; no deben incorporarse al repositorio público.
+
 ## Railway
 
 El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA usa proxies propios para la salud del servicio y la sesión; la identidad autenticada y la clave privada nunca se aceptan desde estado controlado por el navegador.

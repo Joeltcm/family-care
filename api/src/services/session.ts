@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import type { CallerIdentity } from '../auth.js';
+import { config } from '../config.js';
 import { database } from '../database.js';
 
 type UserRow = {
@@ -25,6 +26,37 @@ type PatientRow = {
 };
 
 export class IdentityConflictError extends Error {}
+
+async function ensureConfiguredPatient(client: PoolClient, familyId: string, userId: string, legalName: string) {
+  const existing = await client.query<{ id: string }>(
+    'SELECT id FROM patients WHERE family_id = $1 AND lower(legal_name) = lower($2) LIMIT 1',
+    [familyId, legalName],
+  );
+  let patientId = existing.rows[0]?.id;
+  if (!patientId) {
+    const created = await client.query<{ id: string }>(
+      `INSERT INTO patients (family_id, legal_name, preferred_name)
+       VALUES ($1, $2, $2)
+       RETURNING id`,
+      [familyId, legalName],
+    );
+    patientId = created.rows[0].id;
+    await client.query(
+      `INSERT INTO audit_events
+         (actor_user_id, family_id, patient_id, action, resource_type, resource_id, metadata)
+       VALUES ($1, $2, $3, 'family.patient_configured', 'patient', $3, '{"source":"private-runtime-config"}'::jsonb)`,
+      [userId, familyId, patientId],
+    );
+  }
+  await client.query(
+    `INSERT INTO patient_permissions
+       (patient_id, user_id, can_read, can_write, can_share, granted_by)
+     VALUES ($1, $2, true, true, true, $2)
+     ON CONFLICT (patient_id, user_id)
+     DO UPDATE SET can_read = true, can_write = true, can_share = true`,
+    [patientId, userId],
+  );
+}
 
 async function upsertUser(client: PoolClient, identity: CallerIdentity) {
   const bySubject = await client.query<UserRow>(
@@ -133,6 +165,18 @@ export async function bootstrapSession(identity: CallerIdentity) {
         [patient.rows[0].id, user.id],
       );
       created = true;
+    }
+
+    if (config.FAMILY_CARE_OWNER_LEGAL_NAME) {
+      await client.query(
+        `UPDATE patients
+            SET legal_name = $3, preferred_name = $3, updated_at = now()
+          WHERE family_id = $1 AND linked_user_id = $2`,
+        [family.id, user.id, config.FAMILY_CARE_OWNER_LEGAL_NAME],
+      );
+    }
+    for (const legalName of [config.FAMILY_CARE_SPOUSE_LEGAL_NAME, config.FAMILY_CARE_CHILD_LEGAL_NAME]) {
+      if (legalName) await ensureConfiguredPatient(client, family.id, user.id, legalName);
     }
 
     const patients = await client.query<PatientRow>(
