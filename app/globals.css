@@ -49,6 +49,9 @@ button { color: inherit; }
 .user-card strong { font-size: 11px; }
 .user-card small { margin-top: 2px; color: #86a4aa; font-size: 9px; }
 .more { margin-left: auto; color: #75949a; letter-spacing: 1px; }
+.switch-account-link { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 8px 4px 0; border-radius: 9px; padding: 8px; color: #98b4b9; font-size: 9px; font-weight: 700; text-decoration: none; }
+.switch-account-link:hover { background: rgb(255 255 255 / 6%); color: white; }
+.switch-account-mobile { display: none; text-decoration: none; }
 .avatar { display: grid; width: 35px; height: 35px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: white; font-size: 10px; font-weight: 800; letter-spacing: .03em; }
 .avatar-joel { background: #2a6e9f; }
 .avatar-maria { background: #8c6597; }
@@ -442,6 +445,7 @@ button { color: inherit; }
   .profile-chip { padding-right: 7px; font-size: 9px; }
   .profile-chip > span { width: 24px; height: 24px; }
   .top-actions .icon-button:first-child { display: none; }
+  .switch-account-mobile { display: grid; }
   .demo-chip { display: none; }
   .dashboard { padding: 75px 14px 116px; }
   .welcome-row { align-items: flex-start; flex-direction: column; margin-bottom: 19px; }

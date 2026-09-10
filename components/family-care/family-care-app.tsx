@@ -170,13 +170,14 @@ export function FamilyCareApp() {
         <div className="sidebar-support"><div className="shield-mark">✓</div><div><strong>Información protegida</strong><span>Acceso familiar privado</span></div></div>
         {session?.family.role === 'owner' && <button className="family-access-button" type="button" onClick={() => setFamilyAccessOpen(true)}><span>♙</span><span><strong>Accesos familiares</strong><small>Invitaciones y permisos</small></span><b>›</b></button>}
         <button className="user-card" type="button" onClick={openOwnProfile}><span className="avatar avatar-joel">{initials(accountName)}</span><span><strong>{accountName}</strong><small>{accountSubtitle}</small></span><span className="more">•••</span></button>
+        <a className="switch-account-link" href="/signout-with-chatgpt?return_to=/"><span aria-hidden="true">⇄</span>Cambiar cuenta</a>
       </aside>
 
       <main className="main-content">
         <header className="topbar">
           <button className="mobile-brand" type="button" onClick={() => navigate('inicio')}><Image src="/app-icon.png" alt="" width={34} height={34} priority /><strong>Family Care</strong></button>
           <div className="profile-switcher" aria-label="Cambiar perfil">{availableProfiles.map((profile) => <button key={profile.id} type="button" className={activeProfile === profile.id ? 'profile-chip active' : 'profile-chip'} onClick={() => setActiveProfile(profile.id)} aria-pressed={activeProfile === profile.id}><span style={{ background: profile.color }}>{profile.initials}</span>{profile.name}</button>)}</div>
-          <div className="top-actions"><ApiStatusChip status={apiStatus} authenticated={Boolean(session)} />{session?.family.role === 'owner' && <button className="icon-button family-mobile-access" type="button" aria-label="Gestionar accesos familiares" onClick={() => setFamilyAccessOpen(true)}>♙</button>}<button className="icon-button" type="button" aria-label="Buscar">⌕</button><button className="icon-button notification-button" type="button" aria-label="Configurar notificaciones" onClick={() => navigate('calendario')}>◌<span /></button></div>
+          <div className="top-actions"><ApiStatusChip status={apiStatus} authenticated={Boolean(session)} />{session?.family.role === 'owner' && <button className="icon-button family-mobile-access" type="button" aria-label="Gestionar accesos familiares" onClick={() => setFamilyAccessOpen(true)}>♙</button>}<a className="icon-button switch-account-mobile" href="/signout-with-chatgpt?return_to=/" aria-label="Cambiar cuenta">⇄</a><button className="icon-button" type="button" aria-label="Buscar">⌕</button><button className="icon-button notification-button" type="button" aria-label="Configurar notificaciones" onClick={() => navigate('calendario')}>◌<span /></button></div>
         </header>
 
         <div className="dashboard">
