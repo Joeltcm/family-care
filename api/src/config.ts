@@ -10,6 +10,8 @@ const envSchema = z.object({
   FAMILY_CARE_OWNER_LEGAL_NAME: z.string().min(2).max(160).optional(),
   FAMILY_CARE_SPOUSE_LEGAL_NAME: z.string().min(2).max(160).optional(),
   FAMILY_CARE_CHILD_LEGAL_NAME: z.string().min(2).max(160).optional(),
+  FAMILY_CARE_SPOUSE_EMAIL: z.string().email().optional(),
+  FAMILY_CARE_CHILD_EMAIL: z.string().email().optional(),
   R2_ACCOUNT_ID: z.string().optional(),
   R2_BUCKET: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),

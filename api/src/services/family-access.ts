@@ -1,4 +1,5 @@
 import type { CallerIdentity } from '../auth.js';
+import { config } from '../config.js';
 import { database } from '../database.js';
 
 type AccessContext = { user_id: string; family_id: string; role: string };
@@ -86,4 +87,43 @@ export async function createFamilyInvitation(identity: CallerIdentity, input: {
     return { id: invitation.rows[0].id, expiresAt: invitation.rows[0].expires_at, requiresSiteAccess: true };
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
+}
+
+export async function bootstrapConfiguredFamilyInvitations() {
+  if (!database) return;
+  const configured = [
+    config.FAMILY_CARE_SPOUSE_EMAIL ? { email: config.FAMILY_CARE_SPOUSE_EMAIL, name: 'Eileen', relationship: 'spouse', role: 'adult', canWrite: true } : null,
+    config.FAMILY_CARE_CHILD_EMAIL ? { email: config.FAMILY_CARE_CHILD_EMAIL, name: 'Lia', relationship: 'child', role: 'viewer', canWrite: false } : null,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+  if (!configured.length) return;
+  const families = await database.query<{ family_id: string; owner_id: string }>(
+    `SELECT f.id AS family_id, f.created_by AS owner_id FROM families f ORDER BY f.created_at LIMIT 1`,
+  );
+  if (!families.rowCount) return;
+  const { family_id: familyId, owner_id: ownerId } = families.rows[0];
+  for (const invite of configured) {
+    const existingMember = await database.query(
+      `SELECT 1 FROM family_memberships fm JOIN app_users u ON u.id = fm.user_id
+        WHERE fm.family_id = $1 AND lower(u.email) = lower($2)`, [familyId, invite.email],
+    );
+    if (existingMember.rowCount) continue;
+    const invitation = await database.query<{ id: string }>(
+      `INSERT INTO family_invitations
+         (family_id, email, display_name, role, can_view_all, can_manage_emergency, invited_by)
+       VALUES ($1,lower($2),$3,$4,false,true,$5)
+       ON CONFLICT (family_id, lower(email)) WHERE status = 'pending'
+       DO UPDATE SET display_name = EXCLUDED.display_name, role = EXCLUDED.role,
+                     can_view_all = false, can_manage_emergency = true,
+                     invited_by = EXCLUDED.invited_by, expires_at = now() + interval '14 days'
+       RETURNING id`, [familyId, invite.email, invite.name, invite.role, ownerId],
+    );
+    await database.query('DELETE FROM family_invitation_patient_permissions WHERE invitation_id = $1', [invitation.rows[0].id]);
+    await database.query(
+      `INSERT INTO family_invitation_patient_permissions
+         (invitation_id, patient_id, can_read, can_write, can_share)
+       SELECT $1, p.id, true, $2, false FROM patients p
+        WHERE p.family_id = $3 AND p.relationship_to_owner = $4`,
+      [invitation.rows[0].id, invite.canWrite, familyId, invite.relationship],
+    );
+  }
 }

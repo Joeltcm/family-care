@@ -62,6 +62,7 @@ import {
 } from './services/emergency.js';
 import {
   createFamilyInvitation,
+  bootstrapConfiguredFamilyInvitations,
   FamilyAccessPermissionError,
   getFamilyAccess,
 } from './services/family-access.js';
@@ -674,6 +675,7 @@ app.setErrorHandler((error, _request, reply) => {
   reply.code(500).send({ error: 'internal_error' });
 });
 
+await bootstrapConfiguredFamilyInvitations();
 await app.listen({ host: '0.0.0.0', port: config.PORT });
 const reminderTimer = startReminderScheduler();
 
