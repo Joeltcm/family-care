@@ -17,7 +17,7 @@ function digestPin(pin: string, salt: string) {
 
 async function currentUser(client: PoolClient, identity: CallerIdentity) {
   const result = await client.query<{ id: string }>(
-    'SELECT id FROM app_users WHERE auth_subject = $1 AND lower(email) = lower($2) LIMIT 1',
+    'SELECT id FROM app_users WHERE auth_subject = $1 OR lower(email) = lower($2) LIMIT 1',
     [identity.subject, identity.email],
   );
   return result.rows[0]?.id;

@@ -13,7 +13,7 @@ async function context(identity: CallerIdentity) {
     `SELECT u.id AS user_id, fm.family_id,
             (fm.role IN ('owner', 'caregiver') OR fm.can_view_all) AS can_manage
        FROM app_users u JOIN family_memberships fm ON fm.user_id = u.id
-      WHERE u.auth_subject = $1 AND lower(u.email) = lower($2)
+      WHERE u.auth_subject = $1 OR lower(u.email) = lower($2)
       ORDER BY fm.created_at LIMIT 1`,
     [identity.subject, identity.email],
   );

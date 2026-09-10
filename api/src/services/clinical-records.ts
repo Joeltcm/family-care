@@ -69,8 +69,7 @@ async function accessForPatient(client: PoolClient, identity: CallerIdentity, pa
        JOIN family_memberships fm ON fm.user_id = u.id
        JOIN patients p ON p.family_id = fm.family_id AND p.id = $2
        LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = u.id
-      WHERE u.auth_subject = $1
-        AND lower(u.email) = lower($3)
+      WHERE (u.auth_subject = $1 OR lower(u.email) = lower($3))
       ${lock ? 'FOR UPDATE OF p' : ''}`,
     [identity.subject, patientId, identity.email],
   );
@@ -369,8 +368,7 @@ export async function getDocumentVersion(identity: CallerIdentity, documentId: s
             LIMIT 1
          ) dv ON true
         WHERE d.id = $1
-          AND u.auth_subject = $2
-          AND lower(u.email) = lower($3)
+          AND (u.auth_subject = $2 OR lower(u.email) = lower($3))
           AND (fm.can_view_all OR p.linked_user_id = u.id OR pp.can_read)
         LIMIT 1`,
       [documentId, identity.subject, identity.email, variant],

@@ -102,6 +102,26 @@ nombres de medicamentos. Configura `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y
 
 El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA usa proxies propios para la salud del servicio y la sesión; la identidad autenticada y la clave privada nunca se aceptan desde estado controlado por el navegador.
 
-Mantén `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONLY_ENABLED=false` hasta completar consentimiento, contactos verificados y revisiones de seguridad clínica. El almacenamiento de archivos de la PWA lo administra Sites mediante R2; las variables `R2_*` de Railway quedan reservadas para una futura integración directa de la API.
+Mantén `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONLY_ENABLED=false` hasta completar consentimiento, contactos verificados y revisiones de seguridad clínica. El almacenamiento de archivos de la PWA usa un binding R2 privado del proveedor activo; las variables `R2_*` de Railway quedan reservadas para una futura integración directa de la API.
 
 No guardes credenciales en Git ni las envíes por chat. Configúralas directamente en Railway/Cloudflare.
+
+## Cloudflare Workers y Access
+
+La PWA puede desplegarse en Cloudflare Workers sin modificar la API ni la base
+de datos de Railway:
+
+```bash
+npm run deploy:cloudflare
+```
+
+El despliegue usa el bucket privado `family-care-medical-files` y omite el
+adaptador exclusivo de ChatGPT Sites. Protege el Worker completo con Cloudflare
+Access, habilita One-time PIN y limita la política a las direcciones de correo
+familiares exactas; nunca autorices a cualquier correo válido.
+
+Configura como secretos del Worker `FAMILY_CARE_SERVICE_KEY`,
+`CF_ACCESS_TEAM_DOMAIN` y `CF_ACCESS_AUD`, y como variable
+`FAMILY_CARE_API_URL`. La PWA valida criptográficamente el JWT de Access antes
+de reenviar identidad a Railway. Durante la transición también reconoce las
+cabeceras autenticadas de Sites, por lo que ambos accesos pueden convivir.

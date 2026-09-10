@@ -110,7 +110,16 @@ async function upsertUser(client: PoolClient, identity: CallerIdentity) {
   );
 
   if (byEmail.rowCount) {
-    if (byEmail.rows[0].auth_subject) throw new IdentityConflictError('Email already belongs to another identity.');
+    if (byEmail.rows[0].auth_subject) {
+      const linked = await client.query<UserRow>(
+        `UPDATE app_users
+            SET display_name = $2, updated_at = now()
+          WHERE id = $1
+          RETURNING id, email, display_name`,
+        [byEmail.rows[0].id, identity.displayName],
+      );
+      return linked.rows[0];
+    }
     const claimed = await client.query<UserRow>(
       `UPDATE app_users
           SET auth_subject = $2, display_name = $3, updated_at = now()

@@ -8,6 +8,8 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   '00000000-0000-4000-8000-000000000000';
 
 const { d1, r2 } = hostingConfig;
+const isCloudflareDeployment = process.env.FAMILY_CARE_DEPLOY_TARGET === 'cloudflare';
+const cloudflareR2Bucket = process.env.FAMILY_CARE_R2_BUCKET;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
@@ -18,6 +20,8 @@ const localBindingConfig = {
   vars: {
     ...(process.env.FAMILY_CARE_API_URL ? { FAMILY_CARE_API_URL: process.env.FAMILY_CARE_API_URL } : {}),
     ...(process.env.FAMILY_CARE_SERVICE_KEY ? { FAMILY_CARE_SERVICE_KEY: process.env.FAMILY_CARE_SERVICE_KEY } : {}),
+    ...(process.env.CF_ACCESS_TEAM_DOMAIN ? { CF_ACCESS_TEAM_DOMAIN: process.env.CF_ACCESS_TEAM_DOMAIN } : {}),
+    ...(process.env.CF_ACCESS_AUD ? { CF_ACCESS_AUD: process.env.CF_ACCESS_AUD } : {}),
     ...(process.env.FAMILY_CARE_DEV_USER_ID ? { FAMILY_CARE_DEV_USER_ID: process.env.FAMILY_CARE_DEV_USER_ID } : {}),
     ...(process.env.FAMILY_CARE_DEV_USER_EMAIL ? { FAMILY_CARE_DEV_USER_EMAIL: process.env.FAMILY_CARE_DEV_USER_EMAIL } : {}),
     ...(process.env.FAMILY_CARE_DEV_USER_NAME ? { FAMILY_CARE_DEV_USER_NAME: process.env.FAMILY_CARE_DEV_USER_NAME } : {}),
@@ -31,11 +35,11 @@ const localBindingConfig = {
         },
       ]
     : [],
-  r2_buckets: r2
+  r2_buckets: (isCloudflareDeployment ? cloudflareR2Bucket : r2)
     ? [
         {
-          binding: r2,
-          bucket_name: 'site-creator-r2',
+          binding: r2 || 'MEDICAL_FILES',
+          bucket_name: isCloudflareDeployment ? cloudflareR2Bucket! : 'site-creator-r2',
         },
       ]
     : [],
@@ -58,7 +62,7 @@ export default defineConfig(async () => {
       : undefined,
     plugins: [
       vinext(),
-      sites(),
+      ...(!isCloudflareDeployment ? [sites()] : []),
       cloudflare({
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
         config: localBindingConfig,

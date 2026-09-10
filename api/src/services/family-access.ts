@@ -11,7 +11,7 @@ async function context(identity: CallerIdentity) {
   const result = await database.query<AccessContext>(
     `SELECT u.id AS user_id, fm.family_id, fm.role::text
        FROM app_users u JOIN family_memberships fm ON fm.user_id = u.id
-      WHERE u.auth_subject = $1 AND lower(u.email) = lower($2)
+      WHERE u.auth_subject = $1 OR lower(u.email) = lower($2)
       ORDER BY fm.created_at LIMIT 1`, [identity.subject, identity.email],
   );
   if (!result.rowCount) throw new FamilyAccessPermissionError('family_access_denied');
