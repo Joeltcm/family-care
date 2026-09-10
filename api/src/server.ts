@@ -18,6 +18,15 @@ import {
 } from './services/clinical-records.js';
 import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
 import {
+  CarePlanNotFoundError,
+  CarePlanPermissionError,
+  createAppointment,
+  createMedication,
+  getCarePlan,
+  recordMedicationEvent,
+  updateAppointmentStatus,
+} from './services/care-plan.js';
+import {
   PatientProfilePermissionError,
   PatientShareConsentError,
   updatePatientProfile,
@@ -31,6 +40,13 @@ import {
   SharePermissionError,
   ShareUnavailableError,
 } from './services/shares.js';
+import {
+  getPushConfiguration,
+  registerPushSubscription,
+  removePushSubscription,
+  sendPushTest,
+  startReminderScheduler,
+} from './services/push-reminders.js';
 
 const app = Fastify({
   logger: {
@@ -188,6 +204,69 @@ const documentSchema = z.object({
   }
 });
 
+const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const date = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, 'invalid_date');
+
+const medicationSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  doseText: optionalText(120),
+  route: optionalText(80),
+  instructions: optionalText(2_000),
+  prescribedBy: optionalText(160),
+  startDate: dateOnly,
+  endDate: dateOnly.nullable(),
+  times: z.array(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)).min(1).max(8),
+  remindersEnabled: z.boolean(),
+}).strict().superRefine((value, context) => {
+  if (value.endDate && value.endDate < value.startDate) {
+    context.addIssue({ code: 'custom', message: 'invalid_end_date', path: ['endDate'] });
+  }
+  if (new Set(value.times).size !== value.times.length) {
+    context.addIssue({ code: 'custom', message: 'duplicate_schedule', path: ['times'] });
+  }
+});
+
+const medicationEventSchema = z.object({
+  scheduleId: z.string().uuid(),
+  occurrenceDate: dateOnly,
+  status: z.enum(['taken', 'skipped']),
+}).strict();
+
+const appointmentSchema = z.object({
+  startsAt: isoDateTime,
+  endsAt: isoDateTime.nullable(),
+  specialty: optionalText(120),
+  practitionerName: optionalText(160),
+  facilityName: optionalText(180),
+  reason: z.string().trim().min(2).max(500),
+  reminderMinutes: z.array(z.number().int().min(0).max(43_200)).min(1).max(5),
+}).strict().superRefine((value, context) => {
+  if (Date.parse(value.startsAt) < Date.now() - 5 * 60_000) {
+    context.addIssue({ code: 'custom', message: 'past_appointment', path: ['startsAt'] });
+  }
+  if (value.endsAt && Date.parse(value.endsAt) <= Date.parse(value.startsAt)) {
+    context.addIssue({ code: 'custom', message: 'invalid_appointment_end', path: ['endsAt'] });
+  }
+  if (new Set(value.reminderMinutes).size !== value.reminderMinutes.length) {
+    context.addIssue({ code: 'custom', message: 'duplicate_reminder', path: ['reminderMinutes'] });
+  }
+});
+
+const appointmentStatusSchema = z.object({ status: z.enum(['completed', 'cancelled', 'missed']) }).strict();
+
+const pushSubscriptionSchema = z.object({
+  endpoint: z.string().url().max(2_048),
+  expirationTime: z.number().nullable().optional(),
+  keys: z.object({
+    p256dh: z.string().min(20).max(500),
+    auth: z.string().min(8).max(200),
+  }).strict(),
+}).strict();
+
+const removePushSchema = z.object({ endpoint: z.string().url().max(2_048) }).strict();
+
 app.patch('/v1/patients/:patientId/profile', { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (request, reply) => {
   const identity = requireCallerIdentity(request, reply);
   if (!identity) return;
@@ -216,6 +295,107 @@ app.get('/v1/patients/:patientId/clinical-records', async (request, reply) => {
     if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
     throw error;
   }
+});
+
+app.get('/v1/patients/:patientId/care-plan', async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid() }).safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ error: 'invalid_patient_id' });
+  try {
+    return await getCarePlan(identity, params.data.patientId);
+  } catch (error) {
+    if (error instanceof CarePlanPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/patients/:patientId/medications', { config: { rateLimit: { max: 40, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid() }).safeParse(request.params);
+  const body = medicationSchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_medication', issues: body.success ? [] : body.error.issues });
+  try {
+    return reply.code(201).send(await createMedication(identity, params.data.patientId, body.data));
+  } catch (error) {
+    if (error instanceof CarePlanPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/patients/:patientId/medications/:medicationId/events', { config: { rateLimit: { max: 180, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid(), medicationId: z.string().uuid() }).safeParse(request.params);
+  const body = medicationEventSchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_medication_event', issues: body.success ? [] : body.error.issues });
+  try {
+    return await recordMedicationEvent(identity, params.data.patientId, params.data.medicationId, body.data);
+  } catch (error) {
+    if (error instanceof CarePlanPermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof CarePlanNotFoundError) return reply.code(404).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/patients/:patientId/appointments', { config: { rateLimit: { max: 60, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid() }).safeParse(request.params);
+  const body = appointmentSchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_appointment', issues: body.success ? [] : body.error.issues });
+  try {
+    return reply.code(201).send(await createAppointment(identity, params.data.patientId, body.data));
+  } catch (error) {
+    if (error instanceof CarePlanPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.patch('/v1/patients/:patientId/appointments/:appointmentId', { config: { rateLimit: { max: 80, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid(), appointmentId: z.string().uuid() }).safeParse(request.params);
+  const body = appointmentStatusSchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_appointment_status' });
+  try {
+    return await updateAppointmentStatus(identity, params.data.patientId, params.data.appointmentId, body.data.status);
+  } catch (error) {
+    if (error instanceof CarePlanPermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof CarePlanNotFoundError) return reply.code(404).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.get('/v1/push/config', async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  return getPushConfiguration();
+});
+
+app.post('/v1/push/subscriptions', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  if (!capabilities.pushNotifications) return reply.code(503).send({ error: 'push_not_configured' });
+  const body = pushSubscriptionSchema.safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_push_subscription' });
+  return reply.code(201).send(await registerPushSubscription(identity, body.data, request.headers['user-agent'] || null));
+});
+
+app.delete('/v1/push/subscriptions', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const body = removePushSchema.safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_push_subscription' });
+  return removePushSubscription(identity, body.data.endpoint);
+});
+
+app.post('/v1/push/test', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  if (!capabilities.pushNotifications) return reply.code(503).send({ error: 'push_not_configured' });
+  return sendPushTest(identity);
 });
 
 app.post('/v1/patients/:patientId/encounters', { config: { rateLimit: { max: 60, timeWindow: '1 hour' } } }, async (request, reply) => {
@@ -354,9 +534,11 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 await app.listen({ host: '0.0.0.0', port: config.PORT });
+const reminderTimer = startReminderScheduler();
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
+    if (reminderTimer) clearInterval(reminderTimer);
     await app.close();
     await database?.end();
     process.exit(0);

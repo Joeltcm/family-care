@@ -3,9 +3,11 @@
 import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import { ApiStatusChip, type ApiStatus } from '@/components/family-care/api-status';
+import { AppointmentModal } from '@/components/family-care/appointment-modal';
 import { DocumentUploadModal } from '@/components/family-care/document-upload-modal';
 import { EncounterModal } from '@/components/family-care/encounter-modal';
 import { HemogramModal } from '@/components/family-care/hemogram-modal';
+import { MedicationModal } from '@/components/family-care/medication-modal';
 import { ProfileEditorModal } from '@/components/family-care/profile-editor-modal';
 import { ShareRecordModal } from '@/components/family-care/share-record-modal';
 import { SosModal } from '@/components/family-care/sos-modal';
@@ -37,7 +39,10 @@ export function FamilyCareApp() {
   const [encounterOpen, setEncounterOpen] = useState(false);
   const [hemogramOpen, setHemogramOpen] = useState(false);
   const [documentOpen, setDocumentOpen] = useState(false);
+  const [appointmentOpen, setAppointmentOpen] = useState(false);
+  const [medicationOpen, setMedicationOpen] = useState(false);
   const [clinicalRevision, setClinicalRevision] = useState(0);
+  const [careRevision, setCareRevision] = useState(0);
   const [sosSent, setSosSent] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const availableProfiles = session
@@ -85,6 +90,13 @@ export function FamilyCareApp() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('section');
+    if (requested && navigation.some((item) => item.id === requested)) {
+      window.setTimeout(() => setActiveSection(requested as SectionId), 0);
+    }
+  }, []);
+
   function navigate(section: SectionId) {
     setActiveSection(section);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -101,6 +113,31 @@ export function FamilyCareApp() {
     setHemogramOpen(false);
     setDocumentOpen(false);
     showNotice(message);
+  }
+
+  function careSaved(message: string) {
+    refreshCare();
+    setAppointmentOpen(false);
+    setMedicationOpen(false);
+    showNotice(message);
+  }
+
+  function refreshCare() {
+    setCareRevision((value) => value + 1);
+    setClinicalRevision((value) => value + 1);
+  }
+
+  function openCareModal(kind: 'appointment' | 'medication') {
+    if (!selectedPatient) {
+      showNotice('Selecciona el perfil de la persona antes de agregar el registro.', 'warning');
+      return;
+    }
+    if (!selectedPatient.canWrite) {
+      showNotice('Este perfil está disponible solo para consulta.', 'warning');
+      return;
+    }
+    if (kind === 'appointment') setAppointmentOpen(true);
+    else setMedicationOpen(true);
   }
 
   function sendSimulatedSos() {
@@ -142,15 +179,15 @@ export function FamilyCareApp() {
         <header className="topbar">
           <button className="mobile-brand" type="button" onClick={() => navigate('inicio')}><Image src="/app-icon.png" alt="" width={34} height={34} priority /><strong>Family Care</strong></button>
           <div className="profile-switcher" aria-label="Cambiar perfil">{availableProfiles.map((profile) => <button key={profile.id} type="button" className={activeProfile === profile.id ? 'profile-chip active' : 'profile-chip'} onClick={() => setActiveProfile(profile.id)} aria-pressed={activeProfile === profile.id}><span style={{ background: profile.color }}>{profile.initials}</span>{profile.name}</button>)}</div>
-          <div className="top-actions"><ApiStatusChip status={apiStatus} authenticated={Boolean(session)} /><button className="icon-button" type="button" aria-label="Buscar">⌕</button><button className="icon-button notification-button" type="button" aria-label="Notificaciones">◌<span /></button></div>
+          <div className="top-actions"><ApiStatusChip status={apiStatus} authenticated={Boolean(session)} /><button className="icon-button" type="button" aria-label="Buscar">⌕</button><button className="icon-button notification-button" type="button" aria-label="Configurar notificaciones" onClick={() => navigate('calendario')}>◌<span /></button></div>
         </header>
 
         <div className="dashboard">
           {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} accountName={accountName} onNavigate={navigate} />}
           {activeSection === 'expedientes' && <Records profile={selectedProfile.name} patient={selectedPatient} onNotice={showNotice} canEdit={Boolean(selectedPatient?.canWrite)} canShare={Boolean(selectedPatient?.canShare)} onEdit={() => setProfileEditorOpen(true)} onShare={() => setShareOpen(true)} onRegister={() => setEncounterOpen(true)} revision={clinicalRevision} />}
           {activeSection === 'laboratorios' && <Laboratories profile={selectedProfile.name} patient={selectedPatient} canEdit={Boolean(selectedPatient?.canWrite)} onRegister={() => setHemogramOpen(true)} onNotice={showNotice} revision={clinicalRevision} />}
-          {activeSection === 'medicamentos' && <Medications onNotice={showNotice} />}
-          {activeSection === 'calendario' && <Calendar onNotice={showNotice} />}
+          {activeSection === 'medicamentos' && <Medications patients={session?.patients || []} patient={selectedPatient} onNotice={showNotice} onRegister={() => openCareModal('medication')} onChanged={refreshCare} revision={careRevision} />}
+          {activeSection === 'calendario' && <Calendar patients={session?.patients || []} patient={selectedPatient} onNotice={showNotice} onRegister={() => openCareModal('appointment')} onChanged={refreshCare} revision={careRevision} />}
           {activeSection === 'documentos' && <Documents patient={selectedPatient} canEdit={Boolean(selectedPatient?.canWrite)} onUpload={() => setDocumentOpen(true)} onNotice={showNotice} revision={clinicalRevision} />}
           {activeSection === 'seguros' && <Insurance onNotice={showNotice} />}
         </div>
@@ -164,6 +201,8 @@ export function FamilyCareApp() {
       {encounterOpen && selectedPatient && <EncounterModal patient={selectedPatient} onSaved={() => clinicalSaved('Atención guardada en el expediente.')} onClose={() => setEncounterOpen(false)} />}
       {hemogramOpen && selectedPatient && <HemogramModal patient={selectedPatient} onSaved={clinicalSaved} onClose={() => setHemogramOpen(false)} />}
       {documentOpen && selectedPatient && <DocumentUploadModal patient={selectedPatient} onSaved={clinicalSaved} onClose={() => setDocumentOpen(false)} />}
+      {appointmentOpen && selectedPatient && <AppointmentModal patient={selectedPatient} onSaved={() => careSaved('Cita guardada. Activa las alertas para recibir recordatorios.')} onClose={() => setAppointmentOpen(false)} />}
+      {medicationOpen && selectedPatient && <MedicationModal patient={selectedPatient} onSaved={() => careSaved('Medicamento y horarios guardados.')} onClose={() => setMedicationOpen(false)} />}
     </div>
   );
 }

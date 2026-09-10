@@ -83,6 +83,21 @@ Los archivos solo se descargan después de validar identidad y permiso de
 lectura. El límite por variante es 25 MB y los formatos permitidos son PDF,
 JPEG, PNG y WebP.
 
+## Medicamentos, citas y alertas
+
+Los tratamientos incluyen dosis transcrita, vía, indicaciones, profesional,
+vigencia y hasta ocho horarios diarios. Cada toma u omisión se registra de
+forma idempotente y auditable. Family Care no modifica ni recomienda dosis.
+
+Las citas aceptan cualquier especialidad, centro y profesional, con avisos de
+30 minutos, 2 horas o 1 día. Al marcar una cita como realizada se genera una
+consulta en el expediente, sin duplicarla si se actualiza nuevamente.
+
+Las alertas usan Web Push con suscripciones por dispositivo. Los mensajes de
+pantalla bloqueada son deliberadamente genéricos: no incluyen diagnósticos ni
+nombres de medicamentos. Configura `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y
+`VAPID_SUBJECT` únicamente en Railway para habilitar el envío con la PWA cerrada.
+
 ## Railway
 
 El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA usa proxies propios para la salud del servicio y la sesión; la identidad autenticada y la clave privada nunca se aceptan desde estado controlado por el navegador.

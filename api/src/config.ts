@@ -20,6 +20,9 @@ const envSchema = z.object({
   HEALWAVE_READONLY_DATABASE_URL: z.string().url().optional(),
   SOS_SIMULATION_MODE: z.string().default('true').transform((value) => value !== 'false'),
   PUSH_PROVIDER: z.string().optional(),
+  VAPID_PUBLIC_KEY: z.string().min(40).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(30).optional(),
+  VAPID_SUBJECT: z.string().default('mailto:family-care@example.com'),
   CALL_PROVIDER: z.string().optional(),
 });
 
@@ -32,5 +35,6 @@ export const capabilities = {
   objectStorage: Boolean(config.R2_ACCOUNT_ID && config.R2_BUCKET && config.R2_ACCESS_KEY_ID && config.R2_SECRET_ACCESS_KEY),
   deidentifiedAi: Boolean(config.DEEPSEEK_ENABLED && config.DEEPSEEK_API_KEY),
   healwaveReadOnly: Boolean(config.HEALWAVE_READONLY_ENABLED && config.HEALWAVE_READONLY_DATABASE_URL),
+  pushNotifications: Boolean(config.VAPID_PUBLIC_KEY && config.VAPID_PRIVATE_KEY),
   realSos: !config.SOS_SIMULATION_MODE && Boolean(config.PUSH_PROVIDER && config.CALL_PROVIDER),
 };
