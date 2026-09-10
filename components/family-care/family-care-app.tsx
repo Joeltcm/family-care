@@ -7,6 +7,7 @@ import { AppointmentModal } from '@/components/family-care/appointment-modal';
 import { DocumentUploadModal } from '@/components/family-care/document-upload-modal';
 import { EncounterModal } from '@/components/family-care/encounter-modal';
 import { HemogramModal } from '@/components/family-care/hemogram-modal';
+import { FamilyAccessModal } from '@/components/family-care/family-access-modal';
 import { MedicationModal } from '@/components/family-care/medication-modal';
 import { ProfileEditorModal } from '@/components/family-care/profile-editor-modal';
 import { ShareRecordModal } from '@/components/family-care/share-record-modal';
@@ -41,6 +42,7 @@ export function FamilyCareApp() {
   const [documentOpen, setDocumentOpen] = useState(false);
   const [appointmentOpen, setAppointmentOpen] = useState(false);
   const [medicationOpen, setMedicationOpen] = useState(false);
+  const [familyAccessOpen, setFamilyAccessOpen] = useState(false);
   const [clinicalRevision, setClinicalRevision] = useState(0);
   const [careRevision, setCareRevision] = useState(0);
   const [notice, setNotice] = useState<Notice>(null);
@@ -166,6 +168,7 @@ export function FamilyCareApp() {
           {navigation.map((item) => <button key={item.id} className={activeSection === item.id ? 'nav-item active' : 'nav-item'} type="button" onClick={() => navigate(item.id)}><span className="nav-symbol" aria-hidden="true">{item.symbol}</span>{item.label}{'badge' in item && <span className="nav-badge">{item.badge}</span>}</button>)}
         </nav>
         <div className="sidebar-support"><div className="shield-mark">✓</div><div><strong>Información protegida</strong><span>Acceso familiar privado</span></div></div>
+        {session?.family.role === 'owner' && <button className="family-access-button" type="button" onClick={() => setFamilyAccessOpen(true)}><span>♙</span><span><strong>Accesos familiares</strong><small>Invitaciones y permisos</small></span><b>›</b></button>}
         <button className="user-card" type="button" onClick={openOwnProfile}><span className="avatar avatar-joel">{initials(accountName)}</span><span><strong>{accountName}</strong><small>{accountSubtitle}</small></span><span className="more">•••</span></button>
       </aside>
 
@@ -173,7 +176,7 @@ export function FamilyCareApp() {
         <header className="topbar">
           <button className="mobile-brand" type="button" onClick={() => navigate('inicio')}><Image src="/app-icon.png" alt="" width={34} height={34} priority /><strong>Family Care</strong></button>
           <div className="profile-switcher" aria-label="Cambiar perfil">{availableProfiles.map((profile) => <button key={profile.id} type="button" className={activeProfile === profile.id ? 'profile-chip active' : 'profile-chip'} onClick={() => setActiveProfile(profile.id)} aria-pressed={activeProfile === profile.id}><span style={{ background: profile.color }}>{profile.initials}</span>{profile.name}</button>)}</div>
-          <div className="top-actions"><ApiStatusChip status={apiStatus} authenticated={Boolean(session)} /><button className="icon-button" type="button" aria-label="Buscar">⌕</button><button className="icon-button notification-button" type="button" aria-label="Configurar notificaciones" onClick={() => navigate('calendario')}>◌<span /></button></div>
+          <div className="top-actions"><ApiStatusChip status={apiStatus} authenticated={Boolean(session)} />{session?.family.role === 'owner' && <button className="icon-button family-mobile-access" type="button" aria-label="Gestionar accesos familiares" onClick={() => setFamilyAccessOpen(true)}>♙</button>}<button className="icon-button" type="button" aria-label="Buscar">⌕</button><button className="icon-button notification-button" type="button" aria-label="Configurar notificaciones" onClick={() => navigate('calendario')}>◌<span /></button></div>
         </header>
 
         <div className="dashboard">
@@ -197,6 +200,7 @@ export function FamilyCareApp() {
       {documentOpen && selectedPatient && <DocumentUploadModal patient={selectedPatient} onSaved={clinicalSaved} onClose={() => setDocumentOpen(false)} />}
       {appointmentOpen && selectedPatient && <AppointmentModal patient={selectedPatient} onSaved={() => careSaved('Cita guardada. Activa las alertas para recibir recordatorios.')} onClose={() => setAppointmentOpen(false)} />}
       {medicationOpen && selectedPatient && <MedicationModal patient={selectedPatient} onSaved={() => careSaved('Medicamento y horarios guardados.')} onClose={() => setMedicationOpen(false)} />}
+      {familyAccessOpen && <FamilyAccessModal patients={session?.patients || []} onSaved={(message) => showNotice(message, 'info')} onClose={() => setFamilyAccessOpen(false)} />}
     </div>
   );
 }

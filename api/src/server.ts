@@ -60,6 +60,11 @@ import {
   getEmergencySetup,
   triggerEmergency,
 } from './services/emergency.js';
+import {
+  createFamilyInvitation,
+  FamilyAccessPermissionError,
+  getFamilyAccess,
+} from './services/family-access.js';
 
 const app = Fastify({
   logger: {
@@ -304,6 +309,15 @@ const emergencyContactSchema = z.object({
   phone: z.string().regex(/^\+[1-9]\d{7,14}$/), priority: z.number().int().min(1).max(20),
 }).strict();
 
+const familyInvitationSchema = z.object({
+  email: z.string().trim().email().max(254), displayName: z.string().trim().min(2).max(160),
+  role: z.enum(['caregiver', 'adult', 'viewer']), canViewAll: z.boolean(), canManageEmergency: z.boolean(),
+  patients: z.array(z.object({ patientId: z.string().uuid(), canWrite: z.boolean(), canShare: z.boolean() }).strict()).max(20),
+}).strict().superRefine((value, context) => {
+  if (!value.canViewAll && !value.patients.length) context.addIssue({ code: 'custom', message: 'patient_access_required', path: ['patients'] });
+  if (value.patients.some((item) => item.canShare && !item.canWrite)) context.addIssue({ code: 'custom', message: 'share_requires_write', path: ['patients'] });
+});
+
 app.patch('/v1/patients/:patientId/profile', { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (request, reply) => {
   const identity = requireCallerIdentity(request, reply);
   if (!identity) return;
@@ -491,6 +505,28 @@ app.post('/v1/emergency/contacts', { config: { rateLimit: { max: 20, timeWindow:
   try { return reply.code(201).send(await createEmergencyContact(identity, body.data)); }
   catch (error) {
     if (error instanceof EmergencyPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.get('/v1/family/access', async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  try { return await getFamilyAccess(identity); }
+  catch (error) {
+    if (error instanceof FamilyAccessPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/family/invitations', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const body = familyInvitationSchema.safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_family_invitation', issues: body.error.issues });
+  try { return reply.code(201).send(await createFamilyInvitation(identity, body.data)); }
+  catch (error) {
+    if (error instanceof FamilyAccessPermissionError) return reply.code(403).send({ error: error.message });
     throw error;
   }
 });

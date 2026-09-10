@@ -152,6 +152,43 @@ export async function bootstrapSession(identity: CallerIdentity) {
     let created = false;
 
     if (!family) {
+      const invitation = await client.query<{
+        id: string; family_id: string; name: string; role: FamilyRow['role'];
+        can_view_all: boolean; can_manage_emergency: boolean;
+      }>(
+        `SELECT fi.id, fi.family_id, f.name, fi.role, fi.can_view_all, fi.can_manage_emergency
+           FROM family_invitations fi JOIN families f ON f.id = fi.family_id
+          WHERE lower(fi.email) = lower($1) AND fi.status = 'pending' AND fi.expires_at > now()
+          ORDER BY fi.created_at LIMIT 1 FOR UPDATE OF fi`, [identity.email],
+      );
+      if (invitation.rowCount) {
+        const invite = invitation.rows[0];
+        await client.query(
+          `INSERT INTO family_memberships (family_id, user_id, role, can_view_all, can_manage_emergency)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [invite.family_id, user.id, invite.role, invite.can_view_all, invite.can_manage_emergency],
+        );
+        await client.query(
+          `INSERT INTO patient_permissions (patient_id, user_id, can_read, can_write, can_share, granted_by)
+           SELECT fipp.patient_id, $2, fipp.can_read, fipp.can_write, fipp.can_share, fi.invited_by
+             FROM family_invitation_patient_permissions fipp
+             JOIN family_invitations fi ON fi.id = fipp.invitation_id
+            WHERE fipp.invitation_id = $1`, [invite.id, user.id],
+        );
+        await client.query(
+          `UPDATE family_invitations SET status = 'accepted', accepted_by = $2, accepted_at = now() WHERE id = $1`,
+          [invite.id, user.id],
+        );
+        await client.query(
+          `INSERT INTO audit_events (actor_user_id, family_id, action, resource_type, resource_id, metadata)
+           VALUES ($1,$2,'family.invitation_accepted','family_invitation',$3,'{"identity":"verified_email"}'::jsonb)`,
+          [user.id, invite.family_id, invite.id],
+        );
+        family = { id: invite.family_id, name: invite.name, role: invite.role };
+      }
+    }
+
+    if (!family) {
       const createdFamily = await client.query<{ id: string; name: string }>(
         `INSERT INTO families (name, created_by)
          VALUES ($1, $2)

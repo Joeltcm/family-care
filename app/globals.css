@@ -38,6 +38,12 @@ button { color: inherit; }
 .sidebar-support div:last-child { display: flex; flex-direction: column; }
 .sidebar-support strong { font-size: 11px; }
 .sidebar-support span { margin-top: 3px; color: #8eabb0; font-size: 9px; }
+.family-access-button { display: flex; align-items: center; gap: 9px; margin: 0 4px 10px; border: 1px solid rgb(255 255 255 / 10%); border-radius: 12px; padding: 9px 10px; background: rgb(255 255 255 / 5%); color: #dcebed; text-align: left; cursor: pointer; }
+.family-access-button > span:first-child { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 9px; background: #1a5c62; color: #85ded3; }
+.family-access-button > span:nth-child(2) { display: grid; flex: 1; gap: 2px; }
+.family-access-button strong { font-size: 9px; }
+.family-access-button small { color: #8eabb0; font-size: 7px; }
+.family-access-button b { color: #85ded3; font-size: 16px; }
 .user-card { display: flex; align-items: center; gap: 10px; border: 0; border-top: 1px solid rgb(255 255 255 / 9%); padding: 16px 6px 0; background: transparent; color: white; text-align: left; }
 .user-card > span:nth-child(2) { display: flex; flex-direction: column; min-width: 0; }
 .user-card strong { font-size: 11px; }
@@ -399,7 +405,22 @@ button { color: inherit; }
 .insurance-case { display: grid; gap: 3px; border-bottom: 1px solid #edf2f1; padding: 10px 0; color: #536c73; font-size: 9px; }
 .insurance-case span, .muted-copy { color: #7a8c91; font-size: 9px; line-height: 1.55; }
 .policy-list { display: grid; gap: 10px; margin-top: 18px; }
-.policy-list > div { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #edf2f1; padding-top: 10px; color: #536c73; font-size: 10px; }
+.policy-list > div, .policy-list > button { display: flex; align-items: center; justify-content: space-between; border: 0; border-top: 1px solid #edf2f1; padding: 10px 0 0; background: transparent; color: #536c73; font-size: 10px; text-align: left; }
+.policy-list > button { cursor: pointer; }
+.family-access-modal { width: min(650px, 100%); }
+.access-people { display: grid; gap: 8px; margin: 16px 0; }
+.access-people > div { display: flex; align-items: center; gap: 10px; border: 1px solid #e3ecea; border-radius: 12px; padding: 10px 12px; }
+.access-people > div > span:nth-child(2) { display: grid; flex: 1; gap: 2px; color: #3d5962; font-size: 10px; }
+.access-people small { color: #809195; font-size: 8px; }
+.access-people b { border-radius: 999px; padding: 5px 8px; background: #e8f5ef; color: #397b66; font-size: 7px; }
+.access-people .pending-label { background: #fff3da; color: #9a6a16; }
+.access-avatar { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: #dcefeb; color: var(--teal); font-size: 9px; font-weight: 800; }
+.access-avatar.pending { background: #f4eee1; color: #9a6a16; }
+.patient-access { display: flex; flex-wrap: wrap; gap: 9px; margin: 16px 0; border: 1px solid #dce8e5; border-radius: 13px; padding: 13px; }
+.patient-access legend { padding: 0 5px; color: #536a72; font-size: 9px; font-weight: 800; }
+.patient-access label { display: flex; align-items: center; gap: 5px; border-radius: 999px; padding: 7px 9px; background: #f3f8f7; color: #536a72; font-size: 9px; }
+.patient-access input { accent-color: var(--teal); }
+.patient-access .access-all, .patient-access .access-write { flex-basis: 100%; border-radius: 8px; }
 .toast { position: fixed; right: 24px; bottom: 110px; z-index: 120; width: min(360px, calc(100vw - 28px)); border: 1px solid #bce0d9; border-radius: 13px; padding: 13px 15px; background: #f0faf7; color: #286f5f; box-shadow: 0 15px 40px rgb(18 64 69 / 15%); font-size: 10px; font-weight: 700; }
 
 @media (max-width: 1050px) {
