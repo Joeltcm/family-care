@@ -1,6 +1,6 @@
 type ClinicalSnapshot = {
   expiresAt: string;
-  patient: { name: string; birthDate: string | null; bloodType: string | null; emergencySummary: string | null };
+  patient: { name: string; birthDate: string | null; bloodType: string | null; emergencySummary: string | null; allergiesSummary: string | null };
   conditions: Array<Record<string, unknown>>;
   medications: Array<Record<string, unknown>>;
   encounters: Array<Record<string, unknown>>;
@@ -68,7 +68,7 @@ function items(rows: Array<Record<string, unknown>>, render: (row: Record<string
 export function renderClinicalRecord(snapshot: ClinicalSnapshot) {
   const p = snapshot.patient;
   const content = `<div class="toolbar no-print"><p>Solo lectura · Caduca ${escapeHtml(date(snapshot.expiresAt, true))}</p><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>
-  <section class="card"><header class="hero"><div><p>RESUMEN CLÍNICO</p><h1>${escapeHtml(p.name)}</h1><p>${escapeHtml(p.emergencySummary || 'Sin resumen de emergencia registrado.')}</p></div><div class="facts"><span class="fact">Nacimiento<strong>${escapeHtml(date(p.birthDate))}</strong></span><span class="fact">Grupo sanguíneo<strong>${escapeHtml(p.bloodType || 'No registrado')}</strong></span></div></header>
+  <section class="card"><header class="hero"><div><p>RESUMEN CLÍNICO</p><h1>${escapeHtml(p.name)}</h1><p>${escapeHtml(p.emergencySummary || 'Sin resumen de emergencia registrado.')}</p></div><div class="facts"><span class="fact">Nacimiento<strong>${escapeHtml(date(p.birthDate))}</strong></span><span class="fact">Grupo sanguíneo<strong>${escapeHtml(p.bloodType || 'No registrado')}</strong></span><span class="fact">Alergias<strong>${escapeHtml(p.allergiesSummary || 'No registradas')}</strong></span></div></header>
   <div class="grid">
     <section class="section"><h2>Condiciones activas</h2>${items(snapshot.conditions, row => `<div class="item"><strong>${escapeHtml(row.name)}</strong><span>Desde ${escapeHtml(date(row.onset_date))}${row.notes ? ' · ' + escapeHtml(row.notes) : ''}</span></div>`)}</section>
     <section class="section"><h2>Medicamentos activos</h2>${items(snapshot.medications, row => `<div class="item"><strong>${escapeHtml(row.name)} ${escapeHtml(row.dose_text)}</strong><span>${escapeHtml(row.instructions || row.route || 'Indicaciones no registradas')}</span></div>`)}</section>

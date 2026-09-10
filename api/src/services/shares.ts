@@ -46,7 +46,7 @@ export async function createMedicalRecordShare(
          JOIN family_memberships fm ON fm.family_id = p.family_id AND fm.user_id = $2
          LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
         WHERE p.id = $1
-          AND (p.linked_user_id = $2 OR COALESCE(pp.can_share, false))
+          AND COALESCE(pp.can_share, false)
         FOR UPDATE OF p`,
       [patientId, userId],
     );
@@ -135,6 +135,7 @@ type ShareRow = {
   birth_date: string | null;
   blood_type: string | null;
   emergency_summary: string | null;
+  allergies_summary: string | null;
   pin_salt: string;
   pin_hash: string;
   expires_at: Date;
@@ -163,7 +164,7 @@ export async function openMedicalRecordShare(token: string, pin: string) {
     await client.query('BEGIN');
     const found = await client.query<ShareRow>(
       `SELECT s.id, s.patient_id, p.family_id, p.legal_name, p.preferred_name,
-              p.birth_date, p.blood_type, p.emergency_summary, s.pin_salt, s.pin_hash,
+              p.birth_date, p.blood_type, p.emergency_summary, p.allergies_summary, s.pin_salt, s.pin_hash,
               s.expires_at, s.revoked_at, s.locked_at, s.failed_attempts
          FROM medical_record_shares s
          JOIN patients p ON p.id = s.patient_id
@@ -219,6 +220,7 @@ export async function openMedicalRecordShare(token: string, pin: string) {
         birthDate: share.birth_date,
         bloodType: share.blood_type,
         emergencySummary: share.emergency_summary,
+        allergiesSummary: share.allergies_summary,
       },
       conditions: conditions.rows,
       medications: medications.rows,

@@ -173,7 +173,7 @@ button { color: inherit; }
 .section-heading { min-height: 76px; }
 .primary-action { flex: 0 0 auto; border: 0; border-radius: 12px; padding: 12px 16px; background: var(--teal); color: white; box-shadow: 0 8px 20px rgb(11 125 118 / 18%); font-size: 11px; font-weight: 800; cursor: pointer; }
 .primary-action:hover { transform: translateY(-1px); background: #086e68; }
-.heading-actions { display: flex; flex: 0 0 auto; gap: 9px; }
+.heading-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
 .secondary-action { border: 1px solid #bcded8; border-radius: 12px; padding: 11px 15px; background: white; color: var(--teal); font-size: 11px; font-weight: 800; cursor: pointer; }
 .secondary-action:hover { transform: translateY(-1px); background: #f1f8f6; }
 .share-modal { position: relative; width: min(530px, 100%); max-height: min(760px, calc(100vh - 32px)); overflow-y: auto; border-radius: 24px; padding: 30px; background: white; box-shadow: 0 28px 80px rgb(0 0 0 / 25%); }
@@ -198,6 +198,30 @@ button { color: inherit; }
 .share-actions button { background: #fff0ed; color: #b75648; }
 .share-error { margin: 11px 0 0; color: #b34d40; font-size: 10px; }
 .share-help { margin: 12px 0 0; color: #789095; font-size: 9px; line-height: 1.5; }
+.profile-modal { position: relative; width: min(680px, 100%); max-height: min(820px, calc(100vh - 32px)); overflow-y: auto; border-radius: 24px; padding: 30px; background: white; box-shadow: 0 28px 80px rgb(0 0 0 / 25%); }
+.profile-modal-heading { display: flex; align-items: center; gap: 13px; padding-right: 32px; }
+.profile-modal-heading > span { display: grid; width: 46px; height: 46px; flex: 0 0 auto; place-items: center; border-radius: 14px; background: var(--teal-soft); color: var(--teal); font-size: 18px; font-weight: 900; }
+.profile-modal-heading .eyebrow { margin-bottom: 4px; }
+.profile-modal h2 { margin: 0; color: #203e49; font-size: 22px; letter-spacing: -.03em; }
+.profile-intro { margin: 13px 0 20px; color: #70858b; font-size: 10px; line-height: 1.55; }
+.profile-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.form-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.form-field.full { grid-column: 1 / -1; }
+.form-field > span { color: #526a72; font-size: 9px; font-weight: 800; letter-spacing: .02em; }
+.form-field input, .form-field select, .form-field textarea { width: 100%; border: 1px solid #d5e2df; border-radius: 11px; padding: 11px 12px; outline: none; background: white; color: #294751; font-size: 11px; resize: vertical; }
+.form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: #6dbbb0; box-shadow: 0 0 0 3px rgb(78 170 157 / 12%); }
+.permission-toggle, .consent-check { display: flex; align-items: flex-start; gap: 10px; margin-top: 15px; border: 1px solid #d9e7e4; border-radius: 13px; padding: 13px; background: #f7fbfa; cursor: pointer; }
+.permission-toggle input, .consent-check input { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--teal); }
+.permission-toggle span { display: flex; flex-direction: column; gap: 3px; }
+.permission-toggle strong { color: #31535c; font-size: 10px; }
+.permission-toggle small { color: #789095; font-size: 9px; }
+.consent-check { border-color: #eadcb9; background: #fffaf0; color: #775f31; font-size: 9px; line-height: 1.45; }
+.data-caution { display: flex; gap: 4px; margin-top: 14px; border-radius: 12px; padding: 11px 12px; background: #f4f7f7; flex-direction: column; }
+.data-caution strong { color: #526b73; font-size: 9px; }
+.data-caution span { color: #788a90; font-size: 8px; line-height: 1.5; }
+.profile-modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
+.profile-modal-actions > button:first-child { border: 1px solid #d6e2e0; border-radius: 11px; padding: 11px 16px; background: white; color: #667d83; font-size: 10px; font-weight: 700; cursor: pointer; }
+.primary-action:disabled { cursor: wait; opacity: .6; }
 .toast.warning { border-color: #ead7af; background: #fff9ec; color: #805f26; }
 .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 16px; align-items: start; }
 .wide-main { margin-top: 4px; }
@@ -218,6 +242,14 @@ button { color: inherit; }
 .side-summary h2 { margin: 0 0 17px; font-size: 16px; }
 .check-row { display: flex; align-items: center; gap: 9px; margin: 11px 0; color: #526b73; font-size: 10px; }
 .check-row span { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: var(--teal-soft); color: var(--teal); font-size: 9px; font-weight: 900; }
+.profile-summary-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #edf2f1; padding: 10px 0; }
+.profile-summary-row span, .profile-summary-block > span { color: #809297; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.profile-summary-row strong { color: #31505a; font-size: 10px; text-align: right; }
+.profile-summary-block { margin-top: 12px; border-radius: 12px; padding: 12px; background: #f5f9f8; }
+.profile-summary-block p { margin: 5px 0 0; color: #5f777e; font-size: 9px; line-height: 1.55; }
+.profile-summary-block.emergency { border: 1px solid #efdfbd; background: #fffaf0; }
+.permission-status { display: inline-flex; margin-top: 13px; border-radius: 999px; padding: 6px 9px; background: #f2f5f4; color: #7b8e92; font-size: 8px; font-weight: 800; }
+.permission-status.enabled { background: #eaf7f3; color: #287563; }
 .readonly-note { margin-top: 20px; border: 1px solid #e9e2ed; border-radius: 13px; padding: 13px; background: #faf8fc; }
 .readonly-note strong { color: #775987; font-size: 11px; }
 .readonly-note p, .body-copy, .clinical-warning p { margin: 5px 0 0; color: #72868b; font-size: 9px; line-height: 1.55; }
@@ -325,6 +357,11 @@ button { color: inherit; }
   .heading-actions { width: 100%; flex-direction: column; }
   .secondary-action { width: 100%; }
   .share-modal { padding: 25px 20px; }
+  .profile-modal { padding: 25px 20px; }
+  .profile-form-grid { grid-template-columns: 1fr; }
+  .form-field.full { grid-column: auto; }
+  .profile-modal-actions { flex-direction: column-reverse; }
+  .profile-modal-actions button { width: 100%; }
   .table-row { min-width: 550px; }
   .lab-table { overflow-x: auto; }
   .medication-card { grid-template-columns: 42px 1fr; }

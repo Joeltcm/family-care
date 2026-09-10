@@ -15,8 +15,14 @@ export type FamilyCareSession = {
     preferredName: string | null;
     birthDate: string | null;
     bloodType: string | null;
+    emergencySummary: string | null;
+    allergiesSummary: string | null;
+    relationship: 'self' | 'spouse' | 'child' | 'dependent' | 'other' | null;
     linkedToCurrentUser: boolean;
+    canWrite: boolean;
     canShare: boolean;
   }>;
   created: boolean;
 };
+
+export type FamilyCarePatient = FamilyCareSession['patients'][number];

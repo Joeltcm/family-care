@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { ApiStatusChip, type ApiStatus } from '@/components/family-care/api-status';
+import { ProfileEditorModal } from '@/components/family-care/profile-editor-modal';
 import { ShareRecordModal } from '@/components/family-care/share-record-modal';
 import { SosModal } from '@/components/family-care/sos-modal';
 import type { Notice, Notify } from '@/components/family-care/types';
@@ -14,7 +15,7 @@ import { Laboratories } from '@/components/family-care/views/laboratories';
 import { Medications } from '@/components/family-care/views/medications';
 import { Records } from '@/components/family-care/views/records';
 import { navigation, profiles, type ProfileId, type SectionId } from '@/lib/demo-data';
-import type { FamilyCareSession } from '@/lib/family-care-session';
+import type { FamilyCarePatient, FamilyCareSession } from '@/lib/family-care-session';
 
 const profileColors = ['#245f91', '#8a5d95', '#df765f', '#498477'];
 
@@ -29,6 +30,7 @@ export function FamilyCareApp() {
   const [session, setSession] = useState<FamilyCareSession | null>(null);
   const [sosOpen, setSosOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [sosSent, setSosSent] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -96,6 +98,21 @@ export function FamilyCareApp() {
     window.setTimeout(() => setSosSent(false), 5000);
   }
 
+  function savePatientProfile(patient: FamilyCarePatient) {
+    setSession((current) => current ? {
+      ...current,
+      patients: current.patients.map((item) => item.id === patient.id ? patient : item),
+    } : current);
+    setProfileEditorOpen(false);
+    showNotice('Perfil clínico guardado correctamente.');
+  }
+
+  function openOwnProfile() {
+    const ownPatient = session?.patients.find((patient) => patient.linkedToCurrentUser);
+    if (ownPatient) setActiveProfile(ownPatient.id);
+    navigate('expedientes');
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -108,7 +125,7 @@ export function FamilyCareApp() {
           {navigation.map((item) => <button key={item.id} className={activeSection === item.id ? 'nav-item active' : 'nav-item'} type="button" onClick={() => navigate(item.id)}><span className="nav-symbol" aria-hidden="true">{item.symbol}</span>{item.label}{'badge' in item && <span className="nav-badge">{item.badge}</span>}</button>)}
         </nav>
         <div className="sidebar-support"><div className="shield-mark">✓</div><div><strong>Información protegida</strong><span>Acceso familiar privado</span></div></div>
-        <button className="user-card" type="button"><span className="avatar avatar-joel">{initials(accountName)}</span><span><strong>{accountName}</strong><small>{accountSubtitle}</small></span><span className="more">•••</span></button>
+        <button className="user-card" type="button" onClick={openOwnProfile}><span className="avatar avatar-joel">{initials(accountName)}</span><span><strong>{accountName}</strong><small>{accountSubtitle}</small></span><span className="more">•••</span></button>
       </aside>
 
       <main className="main-content">
@@ -120,7 +137,7 @@ export function FamilyCareApp() {
 
         <div className="dashboard">
           {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} accountName={accountName} onNavigate={navigate} />}
-          {activeSection === 'expedientes' && <Records profile={selectedProfile.name} onNotice={showNotice} canShare={Boolean(selectedPatient?.canShare)} onShare={() => setShareOpen(true)} />}
+          {activeSection === 'expedientes' && <Records profile={selectedProfile.name} patient={selectedPatient} onNotice={showNotice} canEdit={Boolean(selectedPatient?.canWrite)} canShare={Boolean(selectedPatient?.canShare)} onEdit={() => setProfileEditorOpen(true)} onShare={() => setShareOpen(true)} />}
           {activeSection === 'laboratorios' && <Laboratories profile={selectedProfile.name} onUpload={() => fileInput.current?.click()} />}
           {activeSection === 'medicamentos' && <Medications onNotice={showNotice} />}
           {activeSection === 'calendario' && <Calendar onNotice={showNotice} />}
@@ -134,6 +151,7 @@ export function FamilyCareApp() {
       {notice && <div className={`toast ${notice.tone}`} role="status">✓ {notice.text}</div>}
       {sosOpen && <SosModal person={selectedProfile.name} sent={sosSent} onSend={sendSimulatedSos} onClose={() => setSosOpen(false)} />}
       {shareOpen && selectedPatient && <ShareRecordModal patientId={selectedPatient.id} patientName={selectedProfile.name} onNotice={showNotice} onClose={() => setShareOpen(false)} />}
+      {profileEditorOpen && selectedPatient && <ProfileEditorModal patient={selectedPatient} onSaved={savePatientProfile} onClose={() => setProfileEditorOpen(false)} />}
     </div>
   );
 }

@@ -8,6 +8,11 @@ import { capabilities, config } from './config.js';
 import { checkDatabase, database } from './database.js';
 import { renderClinicalRecord, renderShareGate } from './share-page.js';
 import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
+import {
+  PatientProfilePermissionError,
+  PatientShareConsentError,
+  updatePatientProfile,
+} from './services/patients.js';
 import { bootstrapSession, IdentityConflictError } from './services/session.js';
 import {
   createMedicalRecordShare,
@@ -70,6 +75,46 @@ app.post('/v1/session/bootstrap', { config: { rateLimit: { max: 30, timeWindow: 
     if (error instanceof IdentityConflictError) {
       return reply.code(409).send({ error: 'identity_conflict' });
     }
+    throw error;
+  }
+});
+
+function validPastDate(value: string | null) {
+  if (value === null) return true;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day, 12));
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day
+    && parsed.getTime() <= Date.now();
+}
+
+const patientProfileSchema = z.object({
+  legalName: z.string().trim().min(2).max(160),
+  preferredName: z.string().trim().max(120).nullable(),
+  birthDate: z.string().nullable().refine(validPastDate, 'invalid_birth_date'),
+  bloodType: z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']).nullable(),
+  allergiesSummary: z.string().trim().max(2_000).nullable(),
+  emergencySummary: z.string().trim().max(2_000).nullable(),
+  canShare: z.boolean(),
+  shareConsentConfirmed: z.boolean().default(false),
+}).strict();
+
+app.patch('/v1/patients/:patientId/profile', { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid() }).safeParse(request.params);
+  const body = patientProfileSchema.safeParse(request.body);
+  if (!params.success || !body.success) {
+    return reply.code(400).send({ error: 'invalid_patient_profile', issues: body.success ? [] : body.error.issues });
+  }
+  try {
+    return await updatePatientProfile(identity, params.data.patientId, body.data);
+  } catch (error) {
+    if (error instanceof PatientProfilePermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof PatientShareConsentError) return reply.code(409).send({ error: error.message });
     throw error;
   }
 });

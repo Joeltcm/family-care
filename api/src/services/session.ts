@@ -21,24 +21,39 @@ type PatientRow = {
   preferred_name: string | null;
   birth_date: string | null;
   blood_type: string | null;
+  emergency_summary: string | null;
+  allergies_summary: string | null;
+  relationship_to_owner: 'self' | 'spouse' | 'child' | 'dependent' | 'other' | null;
   linked_user_id: string | null;
+  can_write: boolean;
   can_share: boolean;
 };
 
 export class IdentityConflictError extends Error {}
 
-async function ensureConfiguredPatient(client: PoolClient, familyId: string, userId: string, legalName: string) {
+async function ensureConfiguredPatient(
+  client: PoolClient,
+  familyId: string,
+  userId: string,
+  legalName: string,
+  relationship: 'spouse' | 'child',
+) {
   const existing = await client.query<{ id: string }>(
-    'SELECT id FROM patients WHERE family_id = $1 AND lower(legal_name) = lower($2) LIMIT 1',
-    [familyId, legalName],
+    `SELECT id
+       FROM patients
+      WHERE family_id = $1
+        AND (lower(legal_name) = lower($2) OR relationship_to_owner = $3)
+      ORDER BY (lower(legal_name) = lower($2)) DESC
+      LIMIT 1`,
+    [familyId, legalName, relationship],
   );
   let patientId = existing.rows[0]?.id;
   if (!patientId) {
     const created = await client.query<{ id: string }>(
-      `INSERT INTO patients (family_id, legal_name, preferred_name)
-       VALUES ($1, $2, $2)
+      `INSERT INTO patients (family_id, legal_name, preferred_name, relationship_to_owner)
+       VALUES ($1, $2, $2, $3)
        RETURNING id`,
-      [familyId, legalName],
+      [familyId, legalName, relationship],
     );
     patientId = created.rows[0].id;
     await client.query(
@@ -49,11 +64,19 @@ async function ensureConfiguredPatient(client: PoolClient, familyId: string, use
     );
   }
   await client.query(
+    `UPDATE patients
+        SET relationship_to_owner = COALESCE(relationship_to_owner, $2),
+            private_config_applied_at = COALESCE(private_config_applied_at, now()),
+            updated_at = now()
+      WHERE id = $1`,
+    [patientId, relationship],
+  );
+  await client.query(
     `INSERT INTO patient_permissions
        (patient_id, user_id, can_read, can_write, can_share, granted_by)
-     VALUES ($1, $2, true, true, true, $2)
+     VALUES ($1, $2, true, true, false, $2)
      ON CONFLICT (patient_id, user_id)
-     DO UPDATE SET can_read = true, can_write = true, can_share = true`,
+     DO UPDATE SET can_read = true, can_write = true`,
     [patientId, userId],
   );
 }
@@ -155,7 +178,7 @@ export async function bootstrapSession(identity: CallerIdentity) {
         `INSERT INTO patients (family_id, linked_user_id, legal_name, preferred_name)
          VALUES ($1, $2, $3, $3)
          RETURNING id`,
-        [family.id, user.id, identity.displayName],
+        [family.id, user.id, config.FAMILY_CARE_OWNER_LEGAL_NAME || identity.displayName],
       );
       await client.query(
         `INSERT INTO patient_permissions
@@ -167,27 +190,35 @@ export async function bootstrapSession(identity: CallerIdentity) {
       created = true;
     }
 
-    if (config.FAMILY_CARE_OWNER_LEGAL_NAME) {
-      await client.query(
-        `UPDATE patients
-            SET legal_name = $3, preferred_name = $3, updated_at = now()
-          WHERE family_id = $1 AND linked_user_id = $2`,
-        [family.id, user.id, config.FAMILY_CARE_OWNER_LEGAL_NAME],
-      );
+    await client.query(
+      `UPDATE patients
+          SET legal_name = CASE WHEN private_config_applied_at IS NULL AND $3::text IS NOT NULL THEN $3 ELSE legal_name END,
+              preferred_name = CASE WHEN private_config_applied_at IS NULL AND $3::text IS NOT NULL THEN $3 ELSE preferred_name END,
+              relationship_to_owner = 'self',
+              private_config_applied_at = COALESCE(private_config_applied_at, now()),
+              updated_at = now()
+        WHERE family_id = $1 AND linked_user_id = $2`,
+      [family.id, user.id, config.FAMILY_CARE_OWNER_LEGAL_NAME || null],
+    );
+    if (config.FAMILY_CARE_SPOUSE_LEGAL_NAME) {
+      await ensureConfiguredPatient(client, family.id, user.id, config.FAMILY_CARE_SPOUSE_LEGAL_NAME, 'spouse');
     }
-    for (const legalName of [config.FAMILY_CARE_SPOUSE_LEGAL_NAME, config.FAMILY_CARE_CHILD_LEGAL_NAME]) {
-      if (legalName) await ensureConfiguredPatient(client, family.id, user.id, legalName);
+    if (config.FAMILY_CARE_CHILD_LEGAL_NAME) {
+      await ensureConfiguredPatient(client, family.id, user.id, config.FAMILY_CARE_CHILD_LEGAL_NAME, 'child');
     }
 
     const patients = await client.query<PatientRow>(
-      `SELECT DISTINCT p.id, p.legal_name, p.preferred_name, p.birth_date, p.blood_type, p.linked_user_id,
-              (p.linked_user_id = $2 OR COALESCE(pp.can_share, false)) AS can_share
+      `SELECT p.id, p.legal_name, p.preferred_name, p.birth_date, p.blood_type,
+              p.emergency_summary, p.allergies_summary, p.relationship_to_owner, p.linked_user_id,
+              (p.linked_user_id = $2 OR COALESCE(pp.can_write, false)) AS can_write,
+              COALESCE(pp.can_share, false) AS can_share
          FROM patients p
          JOIN family_memberships fm ON fm.family_id = p.family_id AND fm.user_id = $2
          LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
         WHERE p.family_id = $1
           AND (fm.can_view_all OR pp.can_read)
-        ORDER BY p.created_at`,
+        ORDER BY CASE p.relationship_to_owner WHEN 'self' THEN 0 WHEN 'spouse' THEN 1 WHEN 'child' THEN 2 ELSE 3 END,
+                 p.created_at`,
       [family.id, user.id],
     );
 
@@ -210,7 +241,11 @@ export async function bootstrapSession(identity: CallerIdentity) {
         preferredName: patient.preferred_name,
         birthDate: patient.birth_date,
         bloodType: patient.blood_type,
+        emergencySummary: patient.emergency_summary,
+        allergiesSummary: patient.allergies_summary,
+        relationship: patient.relationship_to_owner,
         linkedToCurrentUser: patient.linked_user_id === user.id,
+        canWrite: patient.can_write,
         canShare: patient.can_share,
       })),
       created,

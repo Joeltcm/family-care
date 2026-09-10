@@ -49,6 +49,17 @@ Los nombres legales de la familia se inyectan mediante las variables privadas
 `FAMILY_CARE_OWNER_LEGAL_NAME`, `FAMILY_CARE_SPOUSE_LEGAL_NAME` y
 `FAMILY_CARE_CHILD_LEGAL_NAME`; no deben incorporarse al repositorio público.
 
+## Perfiles clínicos
+
+Cada paciente protegido puede editar nombre legal y preferido, fecha de
+nacimiento, grupo sanguíneo, alergias y un resumen para emergencias. Los cambios
+se validan en la API, se guardan en PostgreSQL y generan un evento de auditoría.
+
+Los enlaces médicos están deshabilitados inicialmente para perfiles no
+vinculados a la cuenta. Para habilitarlos se exige confirmar la autorización;
+el consentimiento queda registrado sin copiar el contenido clínico al evento
+de auditoría.
+
 ## Railway
 
 El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA usa proxies propios para la salud del servicio y la sesión; la identidad autenticada y la clave privada nunca se aceptan desde estado controlado por el navegador.
