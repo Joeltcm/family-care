@@ -172,7 +172,6 @@ export async function issueOwnerActivation(email?: string) {
         `SELECT u.id, fm.family_id, u.email
            FROM app_users u JOIN family_memberships fm ON fm.user_id = u.id
           WHERE fm.role = 'owner'
-            AND NOT EXISTS (SELECT 1 FROM auth_credentials ac WHERE ac.user_id = u.id)
           ORDER BY fm.created_at LIMIT 2
           FOR UPDATE OF u`,
       );
@@ -180,9 +179,6 @@ export async function issueOwnerActivation(email?: string) {
     if (result.rows.length > 1) throw new ActivationError('owner_account_ambiguous');
     const owner = result.rows[0];
     if (!owner) throw new ActivationError('owner_account_not_found');
-    const credential = await client.query('SELECT 1 FROM auth_credentials WHERE user_id = $1', [owner.id]);
-    if (credential.rowCount) throw new ActivationError('account_already_activated');
-
     await client.query(
       'UPDATE account_activation_tokens SET consumed_at = COALESCE(consumed_at, now()) WHERE user_id = $1 AND consumed_at IS NULL',
       [owner.id],
@@ -227,7 +223,6 @@ export async function getActivationDetails(token: string) {
        JOIN app_users u ON u.id = aat.user_id
        JOIN family_memberships fm ON fm.user_id = u.id AND fm.role = 'owner'
       WHERE aat.token_hash = $1 AND aat.consumed_at IS NULL AND aat.expires_at > now()
-        AND NOT EXISTS (SELECT 1 FROM auth_credentials ac WHERE ac.user_id = u.id)
       ORDER BY fm.created_at LIMIT 1`,
     [digest(token)],
   )).rows[0];
@@ -255,15 +250,26 @@ export async function activateInvitation(token: string, password: string, userAg
     );
     const owner = ownerResult.rows[0];
     if (owner) {
-      const credential = await client.query('SELECT 1 FROM auth_credentials WHERE user_id = $1', [owner.user_id]);
-      if (credential.rowCount) throw new ActivationError('account_already_activated');
       const passwordHash = await hash(password, argonOptions);
-      await client.query('INSERT INTO auth_credentials (user_id, password_hash) VALUES ($1,$2)', [owner.user_id, passwordHash]);
+      await client.query(
+        `INSERT INTO auth_credentials (user_id, password_hash)
+         VALUES ($1,$2)
+         ON CONFLICT (user_id) DO UPDATE
+           SET password_hash = EXCLUDED.password_hash,
+               failed_attempts = 0,
+               locked_until = NULL,
+               password_changed_at = now()`,
+        [owner.user_id, passwordHash],
+      );
+      await client.query(
+        'UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1 AND revoked_at IS NULL',
+        [owner.user_id],
+      );
       await client.query('UPDATE account_activation_tokens SET consumed_at = now() WHERE id = $1', [owner.token_id]);
       const session = await createSession(client, owner.user_id, userAgent);
       await client.query(
         `INSERT INTO audit_events (actor_user_id, family_id, action, resource_type, resource_id, metadata)
-         VALUES ($1,$2,'account.password_configured','app_user',$1,'{"method":"owner_activation"}'::jsonb)`,
+         VALUES ($1,$2,'account.password_configured','app_user',$1,'{"method":"owner_activation_recovery"}'::jsonb)`,
         [owner.user_id, owner.family_id],
       );
       await client.query('COMMIT');
