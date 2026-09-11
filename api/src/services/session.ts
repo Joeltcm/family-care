@@ -59,7 +59,7 @@ async function ensureConfiguredPatient(
     await client.query(
       `INSERT INTO audit_events
          (actor_user_id, family_id, patient_id, action, resource_type, resource_id, metadata)
-       VALUES ($1, $2, $3, 'family.patient_configured', 'patient', $3, '{"source":"private-runtime-config"}'::jsonb)`,
+       VALUES ($1, $2, $3::uuid, 'family.patient_configured', 'patient', $3::text, '{"source":"private-runtime-config"}'::jsonb)`,
       [userId, familyId, patientId],
     );
   }
