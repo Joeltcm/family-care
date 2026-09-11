@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import PwaRegister from './pwa-register';
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://family-care-pa.joelbmx22.chatgpt.site';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://family-care.joelbmx22-304.workers.dev';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

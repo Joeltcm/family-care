@@ -106,7 +106,7 @@ Mantén `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONL
 
 No guardes credenciales en Git ni las envíes por chat. Configúralas directamente en Railway/Cloudflare.
 
-## Cloudflare Workers y Access
+## Cloudflare Workers y acceso por contraseña
 
 La PWA puede desplegarse en Cloudflare Workers sin modificar la API ni la base
 de datos de Railway:
@@ -116,14 +116,21 @@ npm run deploy:cloudflare
 ```
 
 El despliegue usa el bucket privado `family-care-medical-files` y omite el
-adaptador exclusivo de ChatGPT Sites. Protege el Worker completo con Cloudflare
-Access, habilita One-time PIN y limita la política a las direcciones de correo
-familiares exactas; nunca autorices a cualquier correo válido.
+adaptador exclusivo de ChatGPT Sites. Family Care administra el acceso con
+correo y contraseña: Argon2id para credenciales, cookies `HttpOnly` seguras,
+sesiones revocables de 30 días y bloqueo temporal después de cinco intentos
+fallidos. No existe registro público.
 
-Configura como secretos del Worker `FAMILY_CARE_SERVICE_KEY`,
-`CF_ACCESS_TEAM_DOMAIN` y `CF_ACCESS_AUD`, y como variable
-`FAMILY_CARE_API_URL`. La PWA valida criptográficamente el JWT de Access antes
-de reenviar identidad a Railway. Durante la transición también reconoce las
-cabeceras autenticadas de Sites, por lo que ambos accesos pueden convivir.
-La API acepta una clave separada en `FAMILY_CARE_CLOUDFLARE_SERVICE_KEY`, de
-modo que la credencial de Sites no se reutiliza ni se reemplaza.
+El administrador crea invitaciones desde **Accesos familiares** y comparte un
+enlace de activación de un solo uso que vence en 48 horas. Las cuentas de
+menores quedan supervisadas, limitadas a expedientes autorizados en modo de
+consulta y sin permisos para compartir, exportar, administrar seguros o
+modificar información. Sí pueden activar SOS; la gestión de contactos permanece
+reservada a adultos autorizados.
+
+Configura como secreto del Worker `FAMILY_CARE_SERVICE_KEY` y como variable
+`FAMILY_CARE_API_URL`. La API acepta esa clave separada en
+`FAMILY_CARE_CLOUDFLARE_SERVICE_KEY`, de modo que la credencial del sitio de
+respaldo no se reutiliza ni se reemplaza. Durante la transición también se
+reconocen las identidades verificadas de Sites y, opcionalmente, de Cloudflare
+Access, pero ninguna de ellas es necesaria para los familiares invitados.

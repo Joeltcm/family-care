@@ -6,6 +6,8 @@ export type FamilyCareIdentity = {
   displayName: string;
 };
 
+export const FAMILY_CARE_SESSION_COOKIE = 'family_care_session';
+
 const accessKeySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
 function decodeDisplayName(request: Request, fallback: string) {
@@ -65,8 +67,61 @@ async function getCloudflareAccessIdentity(request: Request): Promise<FamilyCare
   }
 }
 
+export function getPasswordSessionToken(request: Request) {
+  const cookie = request.headers.get('cookie') || '';
+  for (const part of cookie.split(';')) {
+    const [name, ...value] = part.trim().split('=');
+    if (name === FAMILY_CARE_SESSION_COOKIE) return decodeURIComponent(value.join('='));
+  }
+  return null;
+}
+
+export function sessionCookie(token: string, expiresAt: string, request: Request) {
+  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  const maxAge = Math.max(0, Math.floor((Date.parse(expiresAt) - Date.now()) / 1_000));
+  return `${FAMILY_CARE_SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${maxAge}`;
+}
+
+export function clearSessionCookie(request: Request) {
+  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `${FAMILY_CARE_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=0`;
+}
+
+export async function callFamilyCareAuthApi(request: Request, path: string, init: RequestInit = {}) {
+  const apiUrl = process.env.FAMILY_CARE_API_URL;
+  const serviceKey = process.env.FAMILY_CARE_SERVICE_KEY;
+  if (!apiUrl || !serviceKey) throw new Error('identity_bridge_not_configured');
+  const headers = new Headers(init.headers);
+  headers.set('accept', 'application/json');
+  headers.set('x-family-care-service-key', serviceKey);
+  const userAgent = request.headers.get('user-agent');
+  if (userAgent) headers.set('x-family-care-client-agent', userAgent.slice(0, 500));
+  return fetch(new URL(path, apiUrl), {
+    ...init,
+    headers,
+    cache: 'no-store',
+    signal: AbortSignal.timeout(8_000),
+  });
+}
+
+async function getPasswordIdentity(request: Request): Promise<FamilyCareIdentity | null> {
+  const token = getPasswordSessionToken(request);
+  if (!token) return null;
+  try {
+    const response = await callFamilyCareAuthApi(request, '/v1/auth/session', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return null;
+    const identity = await response.json() as FamilyCareIdentity;
+    return identity.subject && identity.email && identity.displayName ? identity : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getFamilyCareIdentity(request: Request): Promise<FamilyCareIdentity | null> {
-  return getOpenAiIdentity(request) || await getCloudflareAccessIdentity(request);
+  return getOpenAiIdentity(request) || await getCloudflareAccessIdentity(request) || await getPasswordIdentity(request);
 }
 
 export async function callFamilyCareApi(request: Request, path: string, init: RequestInit = {}) {

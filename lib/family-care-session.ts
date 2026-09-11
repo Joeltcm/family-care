@@ -3,6 +3,8 @@ export type FamilyCareSession = {
     id: string;
     email: string;
     displayName: string;
+    passwordAccessConfigured: boolean;
+    supervised: boolean;
   };
   family: {
     id: string;

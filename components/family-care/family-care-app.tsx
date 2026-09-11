@@ -9,6 +9,7 @@ import { EncounterModal } from '@/components/family-care/encounter-modal';
 import { HemogramModal } from '@/components/family-care/hemogram-modal';
 import { FamilyAccessModal } from '@/components/family-care/family-access-modal';
 import { MedicationModal } from '@/components/family-care/medication-modal';
+import { PasswordSetupModal } from '@/components/family-care/password-setup-modal';
 import { ProfileEditorModal } from '@/components/family-care/profile-editor-modal';
 import { ShareRecordModal } from '@/components/family-care/share-record-modal';
 import { SosModal } from '@/components/family-care/sos-modal';
@@ -34,6 +35,7 @@ export function FamilyCareApp() {
   const [activeSection, setActiveSection] = useState<SectionId>('inicio');
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
   const [session, setSession] = useState<FamilyCareSession | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
   const [sosOpen, setSosOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
@@ -43,12 +45,13 @@ export function FamilyCareApp() {
   const [appointmentOpen, setAppointmentOpen] = useState(false);
   const [medicationOpen, setMedicationOpen] = useState(false);
   const [familyAccessOpen, setFamilyAccessOpen] = useState(false);
+  const [passwordSetupOpen, setPasswordSetupOpen] = useState(false);
   const [clinicalRevision, setClinicalRevision] = useState(0);
   const [careRevision, setCareRevision] = useState(0);
   const [notice, setNotice] = useState<Notice>(null);
   const availableProfiles = session
     ? [
-        { id: 'familia', name: 'Familia', initials: 'FC', color: '#0b6f69' },
+        ...(!session.user.supervised ? [{ id: 'familia', name: 'Familia', initials: 'FC', color: '#0b6f69' }] : []),
         ...session.patients.map((patient, index) => ({
           id: patient.id,
           name: patient.preferredName || patient.legalName,
@@ -80,13 +83,19 @@ export function FamilyCareApp() {
       })
       .then((value) => {
         setSession(value);
+        if (value.user.supervised && value.patients[0]) setActiveProfile(value.patients[0].id);
+        setSessionLoading(false);
         if (value.created) {
           setNotice({ text: `Perfil protegido de ${value.user.displayName} creado correctamente.`, tone: 'success' });
           window.setTimeout(() => setNotice(null), 4200);
         }
       })
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) setSession(null);
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setSession(null);
+          setSessionLoading(false);
+          window.location.replace('/login');
+        }
       });
     return () => controller.abort();
   }, []);
@@ -156,6 +165,10 @@ export function FamilyCareApp() {
     navigate('expedientes');
   }
 
+  if (sessionLoading || !session) {
+    return <div className="auth-loading"><Image src="/app-icon.png" alt="" width={64} height={64} priority /><strong>Abriendo tu espacio familiar…</strong></div>;
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -165,7 +178,7 @@ export function FamilyCareApp() {
         </button>
         <nav aria-label="Navegación principal" className="main-nav">
           <p className="nav-heading">TU ESPACIO</p>
-          {navigation.map((item) => <button key={item.id} className={activeSection === item.id ? 'nav-item active' : 'nav-item'} type="button" onClick={() => navigate(item.id)}><span className="nav-symbol" aria-hidden="true">{item.symbol}</span>{item.label}{'badge' in item && <span className="nav-badge">{item.badge}</span>}</button>)}
+          {navigation.filter((item) => !session.user.supervised || item.id !== 'seguros').map((item) => <button key={item.id} className={activeSection === item.id ? 'nav-item active' : 'nav-item'} type="button" onClick={() => navigate(item.id)}><span className="nav-symbol" aria-hidden="true">{item.symbol}</span>{item.label}{'badge' in item && <span className="nav-badge">{item.badge}</span>}</button>)}
         </nav>
         <div className="sidebar-support"><div className="shield-mark">✓</div><div><strong>Información protegida</strong><span>Acceso familiar privado</span></div></div>
         {session?.family.role === 'owner' && <button className="family-access-button" type="button" onClick={() => setFamilyAccessOpen(true)}><span>♙</span><span><strong>Accesos familiares</strong><small>Invitaciones y permisos</small></span><b>›</b></button>}
@@ -180,7 +193,9 @@ export function FamilyCareApp() {
           <div className="top-actions"><ApiStatusChip status={apiStatus} authenticated={Boolean(session)} />{session?.family.role === 'owner' && <button className="icon-button family-mobile-access" type="button" aria-label="Gestionar accesos familiares" onClick={() => setFamilyAccessOpen(true)}>♙</button>}<a className="icon-button switch-account-mobile" href="/api/auth/logout" aria-label="Cambiar cuenta">⇄</a><button className="icon-button" type="button" aria-label="Buscar">⌕</button><button className="icon-button notification-button" type="button" aria-label="Configurar notificaciones" onClick={() => navigate('calendario')}>◌<span /></button></div>
         </header>
 
-        <div className="dashboard">
+        {!session.user.passwordAccessConfigured && <div className="password-access-wrap"><div className="password-access-banner"><div><strong>Activa el acceso directo con contraseña</strong><span>Entra desde Cloudflare con tu correo, sin depender de una cuenta de OpenAI.</span></div><button type="button" onClick={() => setPasswordSetupOpen(true)}>Crear contraseña</button></div></div>}
+
+        <div className={!session.user.passwordAccessConfigured ? 'dashboard dashboard-after-banner' : 'dashboard'}>
           {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} accountName={accountName} onNavigate={navigate} />}
           {activeSection === 'expedientes' && <Records profile={selectedProfile.name} patient={selectedPatient} onNotice={showNotice} canEdit={Boolean(selectedPatient?.canWrite)} canShare={Boolean(selectedPatient?.canShare)} onEdit={() => setProfileEditorOpen(true)} onShare={() => setShareOpen(true)} onRegister={() => setEncounterOpen(true)} revision={clinicalRevision} />}
           {activeSection === 'laboratorios' && <Laboratories profile={selectedProfile.name} patient={selectedPatient} canEdit={Boolean(selectedPatient?.canWrite)} onRegister={() => setHemogramOpen(true)} onNotice={showNotice} revision={clinicalRevision} />}
@@ -202,6 +217,7 @@ export function FamilyCareApp() {
       {appointmentOpen && selectedPatient && <AppointmentModal patient={selectedPatient} onSaved={() => careSaved('Cita guardada. Activa las alertas para recibir recordatorios.')} onClose={() => setAppointmentOpen(false)} />}
       {medicationOpen && selectedPatient && <MedicationModal patient={selectedPatient} onSaved={() => careSaved('Medicamento y horarios guardados.')} onClose={() => setMedicationOpen(false)} />}
       {familyAccessOpen && <FamilyAccessModal patients={session?.patients || []} onSaved={(message) => showNotice(message, 'info')} onClose={() => setFamilyAccessOpen(false)} />}
+      {passwordSetupOpen && <PasswordSetupModal onClose={() => setPasswordSetupOpen(false)} onConfigured={() => { setSession((current) => current ? { ...current, user: { ...current.user, passwordAccessConfigured: true } } : current); setPasswordSetupOpen(false); showNotice('Acceso con correo y contraseña activado.'); }} />}
     </div>
   );
 }

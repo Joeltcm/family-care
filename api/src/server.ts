@@ -3,7 +3,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 import { z } from 'zod';
-import { requireCallerIdentity } from './auth.js';
+import { requireCallerIdentity, requireServiceBridge } from './auth.js';
 import { capabilities, config } from './config.js';
 import { checkDatabase, database } from './database.js';
 import { renderClinicalRecord, renderShareGate } from './share-page.js';
@@ -62,10 +62,21 @@ import {
 } from './services/emergency.js';
 import {
   createFamilyInvitation,
+  createFamilyInvitationActivation,
   bootstrapConfiguredFamilyInvitations,
   FamilyAccessPermissionError,
   getFamilyAccess,
 } from './services/family-access.js';
+import {
+  activateInvitation,
+  ActivationError,
+  AuthenticationError,
+  getActivationDetails,
+  loginWithPassword,
+  resolvePasswordSession,
+  revokePasswordSession,
+  setupPasswordForIdentity,
+} from './services/password-auth.js';
 
 const app = Fastify({
   logger: {
@@ -108,6 +119,84 @@ app.get('/v1/demo/dashboard', async () => ({
   metrics: { appointments: 18, hospitalizations: 1, treatments: 4, specialists: 6 },
   disclaimer: 'Datos ficticios. No usar para decisiones médicas.',
 }));
+
+const passwordSchema = z.string().min(12).max(128)
+  .regex(/[a-záéíóúñ]/i, 'letter_required')
+  .regex(/[A-ZÁÉÍÓÚÑ]/, 'uppercase_required')
+  .regex(/[0-9]/, 'number_required');
+const loginSchema = z.object({ email: z.string().trim().email().max(254), password: z.string().min(1).max(128) }).strict();
+const activationSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), password: passwordSchema }).strict();
+const activationDetailsSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict();
+
+function clientAgent(request: { headers: Record<string, unknown> }) {
+  const value = request.headers['x-family-care-client-agent'];
+  return typeof value === 'string' ? value : null;
+}
+
+app.post('/v1/auth/login', { config: { rateLimit: { max: 8, timeWindow: '15 minutes' } } }, async (request, reply) => {
+  if (!requireServiceBridge(request, reply)) return;
+  const body = loginSchema.safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_login' });
+  try { return await loginWithPassword(body.data.email, body.data.password, clientAgent(request)); }
+  catch (error) {
+    if (error instanceof AuthenticationError) return reply.code(401).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/auth/session', { config: { rateLimit: { max: 180, timeWindow: '1 minute' } } }, async (request, reply) => {
+  if (!requireServiceBridge(request, reply)) return;
+  const authorization = request.headers.authorization;
+  const token = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return reply.code(401).send({ error: 'invalid_session' });
+  try { return await resolvePasswordSession(token); }
+  catch (error) {
+    if (error instanceof AuthenticationError) return reply.code(401).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/auth/logout', async (request, reply) => {
+  if (!requireServiceBridge(request, reply)) return;
+  const authorization = request.headers.authorization;
+  const token = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  if (/^[A-Za-z0-9_-]{43}$/.test(token)) await revokePasswordSession(token);
+  return { revoked: true };
+});
+
+app.post('/v1/auth/activation/details', { config: { rateLimit: { max: 30, timeWindow: '15 minutes' } } }, async (request, reply) => {
+  if (!requireServiceBridge(request, reply)) return;
+  const body = activationDetailsSchema.safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_activation' });
+  try { return await getActivationDetails(body.data.token); }
+  catch (error) {
+    if (error instanceof ActivationError) return reply.code(410).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/auth/activate', { config: { rateLimit: { max: 6, timeWindow: '15 minutes' } } }, async (request, reply) => {
+  if (!requireServiceBridge(request, reply)) return;
+  const body = activationSchema.safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_activation', issues: body.error.issues });
+  try { return await activateInvitation(body.data.token, body.data.password, clientAgent(request)); }
+  catch (error) {
+    if (error instanceof ActivationError) return reply.code(410).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/auth/setup-password', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const body = z.object({ password: passwordSchema }).strict().safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_password', issues: body.error.issues });
+  try { return await setupPasswordForIdentity(identity, body.data.password, clientAgent(request)); }
+  catch (error) {
+    if (error instanceof AuthenticationError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
 
 app.post('/v1/session/bootstrap', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
   const identity = requireCallerIdentity(request, reply);
@@ -313,6 +402,7 @@ const emergencyContactSchema = z.object({
 const familyInvitationSchema = z.object({
   email: z.string().trim().email().max(254), displayName: z.string().trim().min(2).max(160),
   role: z.enum(['caregiver', 'adult', 'viewer']), canViewAll: z.boolean(), canManageEmergency: z.boolean(),
+  isMinor: z.boolean(), linkedPatientId: z.string().uuid().nullable(),
   patients: z.array(z.object({ patientId: z.string().uuid(), canWrite: z.boolean(), canShare: z.boolean() }).strict()).max(20),
 }).strict().superRefine((value, context) => {
   if (!value.canViewAll && !value.patients.length) context.addIssue({ code: 'custom', message: 'patient_access_required', path: ['patients'] });
@@ -526,6 +616,18 @@ app.post('/v1/family/invitations', { config: { rateLimit: { max: 10, timeWindow:
   const body = familyInvitationSchema.safeParse(request.body);
   if (!body.success) return reply.code(400).send({ error: 'invalid_family_invitation', issues: body.error.issues });
   try { return reply.code(201).send(await createFamilyInvitation(identity, body.data)); }
+  catch (error) {
+    if (error instanceof FamilyAccessPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/family/invitations/:invitationId/activation', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ invitationId: z.string().uuid() }).safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ error: 'invalid_invitation_id' });
+  try { return await createFamilyInvitationActivation(identity, params.data.invitationId); }
   catch (error) {
     if (error instanceof FamilyAccessPermissionError) return reply.code(403).send({ error: error.message });
     throw error;

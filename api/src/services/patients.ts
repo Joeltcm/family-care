@@ -19,6 +19,7 @@ type AccessRow = {
   role: 'owner' | 'caregiver' | 'adult' | 'dependent' | 'viewer';
   can_write: boolean | null;
   can_share: boolean | null;
+  is_supervised: boolean;
 };
 
 type UpdatedRow = {
@@ -47,17 +48,18 @@ export async function updatePatientProfile(
     await client.query('BEGIN');
     const access = await client.query<AccessRow>(
       `SELECT u.id AS user_id, p.family_id, p.linked_user_id, fm.role,
-              pp.can_write, pp.can_share
+              pp.can_write, pp.can_share, COALESCE(ac.is_supervised, false) AS is_supervised
          FROM app_users u
          JOIN family_memberships fm ON fm.user_id = u.id
          JOIN patients p ON p.family_id = fm.family_id AND p.id = $2
          LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = u.id
+         LEFT JOIN auth_credentials ac ON ac.user_id = u.id
         WHERE (u.auth_subject = $1 OR lower(u.email) = lower($3))
         FOR UPDATE OF p`,
       [identity.subject, patientId, identity.email],
     );
     const permission = access.rows[0];
-    if (!permission || (permission.linked_user_id !== permission.user_id && !permission.can_write)) {
+    if (!permission || permission.is_supervised || (permission.linked_user_id !== permission.user_id && !permission.can_write)) {
       throw new PatientProfilePermissionError('profile_update_not_allowed');
     }
 

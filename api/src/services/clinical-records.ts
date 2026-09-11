@@ -9,6 +9,7 @@ type AccessRow = {
   can_read: boolean | null;
   can_write: boolean | null;
   can_view_all: boolean;
+  is_supervised: boolean;
 };
 
 export type EncounterInput = {
@@ -64,11 +65,12 @@ export class ClinicalRecordNotFoundError extends Error {}
 async function accessForPatient(client: PoolClient, identity: CallerIdentity, patientId: string, lock = false) {
   const result = await client.query<AccessRow>(
     `SELECT u.id AS user_id, p.family_id, p.linked_user_id,
-            pp.can_read, pp.can_write, fm.can_view_all
+            pp.can_read, pp.can_write, fm.can_view_all, COALESCE(ac.is_supervised, false) AS is_supervised
        FROM app_users u
        JOIN family_memberships fm ON fm.user_id = u.id
        JOIN patients p ON p.family_id = fm.family_id AND p.id = $2
        LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = u.id
+       LEFT JOIN auth_credentials ac ON ac.user_id = u.id
       WHERE (u.auth_subject = $1 OR lower(u.email) = lower($3))
       ${lock ? 'FOR UPDATE OF p' : ''}`,
     [identity.subject, patientId, identity.email],
@@ -81,7 +83,7 @@ function mayRead(access: AccessRow | undefined) {
 }
 
 function mayWrite(access: AccessRow | undefined) {
-  return Boolean(access && (access.linked_user_id === access.user_id || access.can_write));
+  return Boolean(access && !access.is_supervised && (access.linked_user_id === access.user_id || access.can_write));
 }
 
 function numberOrNull(value: unknown) {

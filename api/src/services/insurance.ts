@@ -13,7 +13,9 @@ async function context(identity: CallerIdentity) {
     `SELECT u.id AS user_id, fm.family_id,
             (fm.role IN ('owner', 'caregiver') OR fm.can_view_all) AS can_manage
        FROM app_users u JOIN family_memberships fm ON fm.user_id = u.id
-      WHERE u.auth_subject = $1 OR lower(u.email) = lower($2)
+       LEFT JOIN auth_credentials ac ON ac.user_id = u.id
+      WHERE (u.auth_subject = $1 OR lower(u.email) = lower($2))
+        AND COALESCE(ac.is_supervised, false) = false
       ORDER BY fm.created_at LIMIT 1`,
     [identity.subject, identity.email],
   );

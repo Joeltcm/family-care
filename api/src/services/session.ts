@@ -253,11 +253,16 @@ export async function bootstrapSession(identity: CallerIdentity) {
       await ensureConfiguredPatient(client, family.id, user.id, config.FAMILY_CARE_CHILD_LEGAL_NAME, 'child');
     }
 
+    const credential = await client.query<{ is_supervised: boolean }>(
+      'SELECT is_supervised FROM auth_credentials WHERE user_id = $1',
+      [user.id],
+    );
+    const supervised = credential.rows[0]?.is_supervised ?? false;
     const patients = await client.query<PatientRow>(
       `SELECT p.id, p.legal_name, p.preferred_name, p.birth_date, p.blood_type,
               p.emergency_summary, p.allergies_summary, p.relationship_to_owner, p.linked_user_id,
-              (p.linked_user_id = $2 OR COALESCE(pp.can_write, false)) AS can_write,
-              COALESCE(pp.can_share, false) AS can_share
+              (NOT $3::boolean AND (p.linked_user_id = $2 OR COALESCE(pp.can_write, false))) AS can_write,
+              (NOT $3::boolean AND COALESCE(pp.can_share, false)) AS can_share
          FROM patients p
          JOIN family_memberships fm ON fm.family_id = p.family_id AND fm.user_id = $2
          LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
@@ -265,7 +270,7 @@ export async function bootstrapSession(identity: CallerIdentity) {
           AND (fm.can_view_all OR pp.can_read)
         ORDER BY CASE p.relationship_to_owner WHEN 'self' THEN 0 WHEN 'spouse' THEN 1 WHEN 'child' THEN 2 ELSE 3 END,
                  p.created_at`,
-      [family.id, user.id],
+      [family.id, user.id, supervised],
     );
 
     if (created) {
@@ -279,7 +284,13 @@ export async function bootstrapSession(identity: CallerIdentity) {
 
     await client.query('COMMIT');
     return {
-      user: { id: user.id, email: user.email, displayName: user.display_name },
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.display_name,
+        passwordAccessConfigured: Boolean(credential.rowCount),
+        supervised,
+      },
       family: { id: family.id, name: family.name, role: family.role },
       patients: patients.rows.map((patient) => ({
         id: patient.id,

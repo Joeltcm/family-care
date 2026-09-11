@@ -27,16 +27,20 @@ function matchesServiceKey(candidate: string | undefined) {
     });
 }
 
-export function requireCallerIdentity(request: FastifyRequest, reply: FastifyReply): CallerIdentity | null {
+export function requireServiceBridge(request: FastifyRequest, reply: FastifyReply) {
   if (!config.FAMILY_CARE_SERVICE_KEY && !config.FAMILY_CARE_CLOUDFLARE_SERVICE_KEY) {
     reply.code(503).send({ error: 'identity_bridge_not_configured' });
-    return null;
+    return false;
   }
-
   if (!matchesServiceKey(header(request, 'x-family-care-service-key'))) {
     reply.code(401).send({ error: 'unauthorized' });
-    return null;
+    return false;
   }
+  return true;
+}
+
+export function requireCallerIdentity(request: FastifyRequest, reply: FastifyReply): CallerIdentity | null {
+  if (!requireServiceBridge(request, reply)) return null;
 
   const email = header(request, 'x-family-care-user-email');
   const parsed = identitySchema.safeParse({

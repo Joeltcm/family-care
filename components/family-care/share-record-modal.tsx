@@ -37,7 +37,7 @@ export function ShareRecordModal({
         body: JSON.stringify({ patientId, expiresInMinutes }),
       });
       const payload = await response.json() as ShareResult | { error: string };
-      if (!response.ok || !('url' in payload)) throw new Error(payload.error || 'share_failed');
+      if (!response.ok || !('url' in payload)) throw new Error('error' in payload ? payload.error : 'share_failed');
       setResult(payload);
     } catch {
       setError('No fue posible crear el enlace. Verifica la conexión e inténtalo nuevamente.');
