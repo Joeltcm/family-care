@@ -72,6 +72,7 @@ import {
   ActivationError,
   AuthenticationError,
   getActivationDetails,
+  issueOwnerActivation,
   loginWithPassword,
   resolvePasswordSession,
   revokePasswordSession,
@@ -127,6 +128,7 @@ const passwordSchema = z.string().min(12).max(128)
 const loginSchema = z.object({ email: z.string().trim().email().max(254), password: z.string().min(1).max(128) }).strict();
 const activationSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), password: passwordSchema }).strict();
 const activationDetailsSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict();
+const ownerActivationSchema = z.object({ email: z.string().trim().email().max(254) }).strict();
 
 function clientAgent(request: { headers: Record<string, unknown> }) {
   const value = request.headers['x-family-care-client-agent'];
@@ -171,6 +173,17 @@ app.post('/v1/auth/activation/details', { config: { rateLimit: { max: 30, timeWi
   try { return await getActivationDetails(body.data.token); }
   catch (error) {
     if (error instanceof ActivationError) return reply.code(410).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/auth/owner-activation', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (request, reply) => {
+  if (!requireServiceBridge(request, reply)) return;
+  const body = ownerActivationSchema.safeParse(request.body);
+  if (!body.success) return reply.code(400).send({ error: 'invalid_owner_activation' });
+  try { return await issueOwnerActivation(body.data.email); }
+  catch (error) {
+    if (error instanceof ActivationError) return reply.code(409).send({ error: error.message });
     throw error;
   }
 });

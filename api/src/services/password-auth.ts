@@ -154,6 +154,50 @@ export async function setupPasswordForIdentity(identity: CallerIdentity, passwor
   }
 }
 
+export async function issueOwnerActivation(email: string) {
+  if (!database) throw new Error('database_not_configured');
+  const client = await database.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query<{ id: string; family_id: string }>(
+      `SELECT u.id, fm.family_id
+         FROM app_users u JOIN family_memberships fm ON fm.user_id = u.id
+        WHERE lower(u.email) = lower($1) AND fm.role = 'owner'
+        ORDER BY fm.created_at LIMIT 1
+        FOR UPDATE OF u`,
+      [email],
+    );
+    const owner = result.rows[0];
+    if (!owner) throw new ActivationError('owner_account_not_found');
+    const credential = await client.query('SELECT 1 FROM auth_credentials WHERE user_id = $1', [owner.id]);
+    if (credential.rowCount) throw new ActivationError('account_already_activated');
+
+    await client.query(
+      'UPDATE account_activation_tokens SET consumed_at = COALESCE(consumed_at, now()) WHERE user_id = $1 AND consumed_at IS NULL',
+      [owner.id],
+    );
+    const token = newToken();
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1_000);
+    await client.query(
+      `INSERT INTO account_activation_tokens (user_id, token_hash, expires_at)
+       VALUES ($1,$2,$3)`,
+      [owner.id, digest(token), expiresAt],
+    );
+    await client.query(
+      `INSERT INTO audit_events (family_id, action, resource_type, resource_id, metadata)
+       VALUES ($1,'account.activation_link_created','app_user',$2,'{"purpose":"owner_password_bootstrap"}'::jsonb)`,
+      [owner.family_id, owner.id],
+    );
+    await client.query('COMMIT');
+    return { activationToken: token, activationExpiresAt: expiresAt.toISOString() };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function getActivationDetails(token: string) {
   if (!database) throw new Error('database_not_configured');
   const result = await database.query<{ email: string; display_name: string; is_minor: boolean; expires_at: string }>(
@@ -164,10 +208,21 @@ export async function getActivationDetails(token: string) {
     [digest(token)],
   );
   const invitation = result.rows[0];
-  if (!invitation) throw new ActivationError('activation_invalid_or_expired');
-  const [local, domain] = invitation.email.split('@');
+  const owner = invitation ? null : (await database.query<{ email: string; display_name: string; expires_at: string }>(
+    `SELECT u.email, u.display_name, aat.expires_at
+       FROM account_activation_tokens aat
+       JOIN app_users u ON u.id = aat.user_id
+       JOIN family_memberships fm ON fm.user_id = u.id AND fm.role = 'owner'
+      WHERE aat.token_hash = $1 AND aat.consumed_at IS NULL AND aat.expires_at > now()
+        AND NOT EXISTS (SELECT 1 FROM auth_credentials ac WHERE ac.user_id = u.id)
+      ORDER BY fm.created_at LIMIT 1`,
+    [digest(token)],
+  )).rows[0];
+  const account = invitation || (owner ? { ...owner, is_minor: false } : null);
+  if (!account) throw new ActivationError('activation_invalid_or_expired');
+  const [local, domain] = account.email.split('@');
   const maskedEmail = `${local.slice(0, 2)}${'*'.repeat(Math.max(2, local.length - 2))}@${domain}`;
-  return { displayName: invitation.display_name, maskedEmail, isMinor: invitation.is_minor, expiresAt: invitation.expires_at };
+  return { displayName: account.display_name, maskedEmail, isMinor: account.is_minor, expiresAt: account.expires_at };
 }
 
 export async function activateInvitation(token: string, password: string, userAgent?: string | null) {
@@ -175,6 +230,32 @@ export async function activateInvitation(token: string, password: string, userAg
   const client = await database.connect();
   try {
     await client.query('BEGIN');
+    const ownerResult = await client.query<{ token_id: string; user_id: string; family_id: string }>(
+      `SELECT aat.id AS token_id, u.id AS user_id, fm.family_id
+         FROM account_activation_tokens aat
+         JOIN app_users u ON u.id = aat.user_id
+         JOIN family_memberships fm ON fm.user_id = u.id AND fm.role = 'owner'
+        WHERE aat.token_hash = $1 AND aat.consumed_at IS NULL AND aat.expires_at > now()
+        ORDER BY fm.created_at LIMIT 1
+        FOR UPDATE OF aat, u`,
+      [digest(token)],
+    );
+    const owner = ownerResult.rows[0];
+    if (owner) {
+      const credential = await client.query('SELECT 1 FROM auth_credentials WHERE user_id = $1', [owner.user_id]);
+      if (credential.rowCount) throw new ActivationError('account_already_activated');
+      const passwordHash = await hash(password, argonOptions);
+      await client.query('INSERT INTO auth_credentials (user_id, password_hash) VALUES ($1,$2)', [owner.user_id, passwordHash]);
+      await client.query('UPDATE account_activation_tokens SET consumed_at = now() WHERE id = $1', [owner.token_id]);
+      const session = await createSession(client, owner.user_id, userAgent);
+      await client.query(
+        `INSERT INTO audit_events (actor_user_id, family_id, action, resource_type, resource_id, metadata)
+         VALUES ($1,$2,'account.password_configured','app_user',$1,'{"method":"owner_activation"}'::jsonb)`,
+        [owner.user_id, owner.family_id],
+      );
+      await client.query('COMMIT');
+      return session;
+    }
     const result = await client.query<{
       token_id: string; invitation_id: string; family_id: string; email: string; display_name: string;
       role: string; can_view_all: boolean; can_manage_emergency: boolean; invited_by: string;
