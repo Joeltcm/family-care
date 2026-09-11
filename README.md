@@ -125,3 +125,5 @@ Configura como secretos del Worker `FAMILY_CARE_SERVICE_KEY`,
 `FAMILY_CARE_API_URL`. La PWA valida criptográficamente el JWT de Access antes
 de reenviar identidad a Railway. Durante la transición también reconoce las
 cabeceras autenticadas de Sites, por lo que ambos accesos pueden convivir.
+La API acepta una clave separada en `FAMILY_CARE_CLOUDFLARE_SERVICE_KEY`, de
+modo que la credencial de Sites no se reutiliza ni se reemplaza.

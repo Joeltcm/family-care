@@ -17,14 +17,18 @@ function header(request: FastifyRequest, name: string) {
 }
 
 function matchesServiceKey(candidate: string | undefined) {
-  if (!candidate || !config.FAMILY_CARE_SERVICE_KEY) return false;
-  const expected = Buffer.from(config.FAMILY_CARE_SERVICE_KEY);
+  if (!candidate) return false;
   const received = Buffer.from(candidate);
-  return expected.length === received.length && timingSafeEqual(expected, received);
+  return [config.FAMILY_CARE_SERVICE_KEY, config.FAMILY_CARE_CLOUDFLARE_SERVICE_KEY]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => {
+      const expected = Buffer.from(value);
+      return expected.length === received.length && timingSafeEqual(expected, received);
+    });
 }
 
 export function requireCallerIdentity(request: FastifyRequest, reply: FastifyReply): CallerIdentity | null {
-  if (!config.FAMILY_CARE_SERVICE_KEY) {
+  if (!config.FAMILY_CARE_SERVICE_KEY && !config.FAMILY_CARE_CLOUDFLARE_SERVICE_KEY) {
     reply.code(503).send({ error: 'identity_bridge_not_configured' });
     return null;
   }

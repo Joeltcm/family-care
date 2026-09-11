@@ -7,6 +7,7 @@ const envSchema = z.object({
   APP_ORIGIN: z.string().default('http://localhost:3000'),
   PUBLIC_API_URL: z.string().url().optional(),
   FAMILY_CARE_SERVICE_KEY: z.string().min(32).optional(),
+  FAMILY_CARE_CLOUDFLARE_SERVICE_KEY: z.string().min(32).optional(),
   FAMILY_CARE_OWNER_LEGAL_NAME: z.string().min(2).max(160).optional(),
   FAMILY_CARE_SPOUSE_LEGAL_NAME: z.string().min(2).max(160).optional(),
   FAMILY_CARE_CHILD_LEGAL_NAME: z.string().min(2).max(160).optional(),
@@ -36,8 +37,8 @@ export const config = envSchema.parse(process.env);
 
 export const capabilities = {
   database: Boolean(config.DATABASE_URL),
-  authenticatedProfiles: Boolean(config.DATABASE_URL && config.FAMILY_CARE_SERVICE_KEY),
-  temporaryMedicalShares: Boolean(config.DATABASE_URL && config.FAMILY_CARE_SERVICE_KEY && config.PUBLIC_API_URL),
+  authenticatedProfiles: Boolean(config.DATABASE_URL && (config.FAMILY_CARE_SERVICE_KEY || config.FAMILY_CARE_CLOUDFLARE_SERVICE_KEY)),
+  temporaryMedicalShares: Boolean(config.DATABASE_URL && (config.FAMILY_CARE_SERVICE_KEY || config.FAMILY_CARE_CLOUDFLARE_SERVICE_KEY) && config.PUBLIC_API_URL),
   objectStorage: Boolean(config.R2_ACCOUNT_ID && config.R2_BUCKET && config.R2_ACCESS_KEY_ID && config.R2_SECRET_ACCESS_KEY),
   deidentifiedAi: Boolean(config.DEEPSEEK_ENABLED && config.DEEPSEEK_API_KEY),
   healwaveReadOnly: Boolean(config.HEALWAVE_READONLY_ENABLED && config.HEALWAVE_READONLY_DATABASE_URL),
