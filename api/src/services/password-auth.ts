@@ -169,16 +169,22 @@ export async function issueOwnerActivation(email?: string) {
     ) : { rows: [] };
     if (!result.rows.length) {
       result = await client.query<{ id: string; family_id: string; email: string }>(
-        `SELECT u.id, fm.family_id, u.email
-           FROM app_users u JOIN family_memberships fm ON fm.user_id = u.id
-          WHERE fm.role = 'owner'
-          ORDER BY fm.created_at LIMIT 2
+        `SELECT u.id, f.id AS family_id, u.email
+           FROM families f JOIN app_users u ON u.id = f.created_by
+          ORDER BY f.created_at LIMIT 2
           FOR UPDATE OF u`,
       );
     }
     if (result.rows.length > 1) throw new ActivationError('owner_account_ambiguous');
     const owner = result.rows[0];
     if (!owner) throw new ActivationError('owner_account_not_found');
+    await client.query(
+      `INSERT INTO family_memberships (family_id, user_id, role, can_view_all, can_manage_emergency)
+       VALUES ($1,$2,'owner',true,true)
+       ON CONFLICT (family_id, user_id) DO UPDATE
+         SET role = 'owner', can_view_all = true, can_manage_emergency = true`,
+      [owner.family_id, owner.id],
+    );
     await client.query(
       'UPDATE account_activation_tokens SET consumed_at = COALESCE(consumed_at, now()) WHERE user_id = $1 AND consumed_at IS NULL',
       [owner.id],
