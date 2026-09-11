@@ -111,7 +111,7 @@ export async function updatePatientProfile(
     await client.query(
       `INSERT INTO audit_events
          (actor_user_id, family_id, patient_id, action, resource_type, resource_id, metadata)
-       VALUES ($1, $2, $3, 'patient.profile_updated', 'patient', $3, $4)`,
+       VALUES ($1, $2, $3::uuid, 'patient.profile_updated', 'patient', $3::text, $4)`,
       [
         permission.user_id,
         permission.family_id,

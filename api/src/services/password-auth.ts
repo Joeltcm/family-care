@@ -140,7 +140,7 @@ export async function setupPasswordForIdentity(identity: CallerIdentity, passwor
     const session = await createSession(client, user.id, userAgent);
     await client.query(
       `INSERT INTO audit_events (actor_user_id, family_id, action, resource_type, resource_id, metadata)
-       SELECT $1, family_id, 'account.password_configured', 'app_user', $1, '{"method":"verified_identity"}'::jsonb
+       SELECT $1::uuid, family_id, 'account.password_configured', 'app_user', $1::text, '{"method":"verified_identity"}'::jsonb
          FROM family_memberships WHERE user_id = $1 ORDER BY created_at LIMIT 1`,
       [user.id],
     );
@@ -275,7 +275,7 @@ export async function activateInvitation(token: string, password: string, userAg
       const session = await createSession(client, owner.user_id, userAgent);
       await client.query(
         `INSERT INTO audit_events (actor_user_id, family_id, action, resource_type, resource_id, metadata)
-         VALUES ($1,$2,'account.password_configured','app_user',$1,'{"method":"owner_activation_recovery"}'::jsonb)`,
+         VALUES ($1::uuid,$2,'account.password_configured','app_user',$1::text,'{"method":"owner_activation_recovery"}'::jsonb)`,
         [owner.user_id, owner.family_id],
       );
       await client.query('COMMIT');

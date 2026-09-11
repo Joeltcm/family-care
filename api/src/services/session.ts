@@ -276,8 +276,8 @@ export async function bootstrapSession(identity: CallerIdentity) {
     if (created) {
       await client.query(
         `INSERT INTO audit_events
-           (actor_user_id, family_id, action, resource_type, resource_id, metadata)
-         VALUES ($1, $2, 'account.bootstrap', 'family', $2, '{"source":"chatgpt-sites"}'::jsonb)`,
+         (actor_user_id, family_id, action, resource_type, resource_id, metadata)
+         VALUES ($1, $2::uuid, 'account.bootstrap', 'family', $2::text, '{"source":"chatgpt-sites"}'::jsonb)`,
         [user.id, family.id],
       );
     }
