@@ -128,7 +128,7 @@ const passwordSchema = z.string().min(12).max(128)
 const loginSchema = z.object({ email: z.string().trim().email().max(254), password: z.string().min(1).max(128) }).strict();
 const activationSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), password: passwordSchema }).strict();
 const activationDetailsSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict();
-const ownerActivationSchema = z.object({ email: z.string().trim().email().max(254) }).strict();
+const ownerActivationSchema = z.object({ email: z.string().trim().email().max(254).optional() }).strict();
 
 function clientAgent(request: { headers: Record<string, unknown> }) {
   const value = request.headers['x-family-care-client-agent'];

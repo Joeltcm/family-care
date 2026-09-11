@@ -154,19 +154,30 @@ export async function setupPasswordForIdentity(identity: CallerIdentity, passwor
   }
 }
 
-export async function issueOwnerActivation(email: string) {
+export async function issueOwnerActivation(email?: string) {
   if (!database) throw new Error('database_not_configured');
   const client = await database.connect();
   try {
     await client.query('BEGIN');
-    const result = await client.query<{ id: string; family_id: string }>(
-      `SELECT u.id, fm.family_id
+    let result = email ? await client.query<{ id: string; family_id: string; email: string }>(
+      `SELECT u.id, fm.family_id, u.email
          FROM app_users u JOIN family_memberships fm ON fm.user_id = u.id
         WHERE lower(u.email) = lower($1) AND fm.role = 'owner'
         ORDER BY fm.created_at LIMIT 1
         FOR UPDATE OF u`,
       [email],
-    );
+    ) : { rows: [] };
+    if (!result.rows.length) {
+      result = await client.query<{ id: string; family_id: string; email: string }>(
+        `SELECT u.id, fm.family_id, u.email
+           FROM app_users u JOIN family_memberships fm ON fm.user_id = u.id
+          WHERE fm.role = 'owner'
+            AND NOT EXISTS (SELECT 1 FROM auth_credentials ac WHERE ac.user_id = u.id)
+          ORDER BY fm.created_at LIMIT 2
+          FOR UPDATE OF u`,
+      );
+    }
+    if (result.rows.length > 1) throw new ActivationError('owner_account_ambiguous');
     const owner = result.rows[0];
     if (!owner) throw new ActivationError('owner_account_not_found');
     const credential = await client.query('SELECT 1 FROM auth_credentials WHERE user_id = $1', [owner.id]);
@@ -189,7 +200,9 @@ export async function issueOwnerActivation(email: string) {
       [owner.family_id, owner.id],
     );
     await client.query('COMMIT');
-    return { activationToken: token, activationExpiresAt: expiresAt.toISOString() };
+    const [local, domain] = owner.email.split('@');
+    const maskedEmail = `${local.slice(0, 2)}${'*'.repeat(Math.max(2, local.length - 2))}@${domain}`;
+    return { activationToken: token, activationExpiresAt: expiresAt.toISOString(), maskedEmail };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
