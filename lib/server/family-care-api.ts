@@ -121,7 +121,10 @@ async function getPasswordIdentity(request: Request): Promise<FamilyCareIdentity
 }
 
 export async function getFamilyCareIdentity(request: Request): Promise<FamilyCareIdentity | null> {
-  return getOpenAiIdentity(request) || await getCloudflareAccessIdentity(request) || await getPasswordIdentity(request);
+  // A direct Family Care session must take precedence over any ambient identity
+  // added by the hosting platform. Otherwise a successful password login can
+  // be immediately replaced by a different upstream identity during bootstrap.
+  return await getPasswordIdentity(request) || getOpenAiIdentity(request) || await getCloudflareAccessIdentity(request);
 }
 
 export async function callFamilyCareApi(request: Request, path: string, init: RequestInit = {}) {
