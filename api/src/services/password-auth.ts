@@ -73,7 +73,7 @@ export async function loginWithPassword(email: string, password: string, userAge
     const session = await createSession(client, user.id, userAgent);
     await client.query(
       `INSERT INTO audit_events (actor_user_id, family_id, action, resource_type, resource_id, metadata)
-       SELECT $1, fm.family_id, 'account.password_login', 'app_user', $1, $2::jsonb
+       SELECT $1::uuid, fm.family_id, 'account.password_login', 'app_user', $1::text, $2::jsonb
          FROM family_memberships fm WHERE fm.user_id = $1 ORDER BY fm.created_at LIMIT 1`,
       [user.id, JSON.stringify({ supervised: user.is_supervised })],
     );
