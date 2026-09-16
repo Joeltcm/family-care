@@ -178,7 +178,7 @@ export function FamilyCareApp() {
         </button>
         <nav aria-label="Navegación principal" className="main-nav">
           <p className="nav-heading">TU ESPACIO</p>
-          {navigation.filter((item) => !session.user.supervised || item.id !== 'seguros').map((item) => <button key={item.id} className={activeSection === item.id ? 'nav-item active' : 'nav-item'} type="button" onClick={() => navigate(item.id)}><span className="nav-symbol" aria-hidden="true">{item.symbol}</span>{item.label}{'badge' in item && <span className="nav-badge">{item.badge}</span>}</button>)}
+          {navigation.filter((item) => !session.user.supervised || item.id !== 'seguros').map((item) => <button key={item.id} className={activeSection === item.id ? 'nav-item active' : 'nav-item'} type="button" onClick={() => navigate(item.id)}><span className="nav-symbol" aria-hidden="true">{item.symbol}</span>{item.label}</button>)}
         </nav>
         <div className="sidebar-support"><div className="shield-mark">✓</div><div><strong>Información protegida</strong><span>Acceso familiar privado</span></div></div>
         {session?.family.role === 'owner' && <button className="family-access-button" type="button" onClick={() => setFamilyAccessOpen(true)}><span>♙</span><span><strong>Accesos familiares</strong><small>Invitaciones y permisos</small></span><b>›</b></button>}
@@ -196,7 +196,7 @@ export function FamilyCareApp() {
         {!session.user.passwordAccessConfigured && <div className="password-access-wrap"><div className="password-access-banner"><div><strong>Activa el acceso directo con contraseña</strong><span>Entra desde Cloudflare con tu correo, sin depender de una cuenta de OpenAI.</span></div><button type="button" onClick={() => setPasswordSetupOpen(true)}>Crear contraseña</button></div></div>}
 
         <div className={!session.user.passwordAccessConfigured ? 'dashboard dashboard-after-banner' : 'dashboard'}>
-          {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} accountName={accountName} onNavigate={navigate} />}
+          {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} accountName={accountName} patients={session.patients} selectedPatient={selectedPatient} clinicalRevision={clinicalRevision} careRevision={careRevision} onNavigate={navigate} />}
           {activeSection === 'expedientes' && <Records profile={selectedProfile.name} patient={selectedPatient} onNotice={showNotice} canEdit={Boolean(selectedPatient?.canWrite)} canShare={Boolean(selectedPatient?.canShare)} onEdit={() => setProfileEditorOpen(true)} onShare={() => setShareOpen(true)} onRegister={() => setEncounterOpen(true)} revision={clinicalRevision} />}
           {activeSection === 'laboratorios' && <Laboratories profile={selectedProfile.name} patient={selectedPatient} canEdit={Boolean(selectedPatient?.canWrite)} canExport={Boolean(selectedPatient?.canWrite)} onRegister={() => setHemogramOpen(true)} onNotice={showNotice} revision={clinicalRevision} />}
           {activeSection === 'medicamentos' && <Medications patients={session?.patients || []} patient={selectedPatient} onNotice={showNotice} onRegister={() => openCareModal('medication')} onChanged={refreshCare} revision={careRevision} />}

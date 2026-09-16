@@ -160,8 +160,10 @@ button { color: inherit; }
 .panel-heading h2, .quick-panel h2 { margin: 0; color: #1a3945; font-size: 15px; letter-spacing: -.015em; }
 .text-button { border: 0; background: transparent; color: var(--teal); font-size: 10px; font-weight: 700; cursor: pointer; }
 .care-list { padding: 0 12px 12px; }
+.dashboard-data-message { margin: 10px 18px 18px; color: #607981; font-size: 14px; line-height: 1.5; }
 .care-item { display: grid; grid-template-columns: minmax(165px, 1.4fr) minmax(128px, 1fr) minmax(104px, .7fr) 32px; align-items: center; gap: 14px; min-height: 95px; border-radius: 14px; padding: 14px; }
 .care-item { width: 100%; border: 0; text-align: left; cursor: pointer; }
+.care-item + .care-item { margin-top: 7px; }
 .care-item.daughter { background: #fff9f7; }
 .care-item.wife { margin-top: 7px; background: #faf8fc; }
 .care-person, .care-person > div { display: flex; align-items: center; gap: 10px; }
