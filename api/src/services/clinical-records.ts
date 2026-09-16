@@ -133,48 +133,63 @@ export async function extractHemogramFromImage(identity: CallerIdentity, patient
         { type: 'text', text: instruction },
         { type: 'image_url', image_url: { url: `data:${input.mimeType};base64,${input.base64}`, detail: 'original' } },
       ];
-  // Keep a single deadline over both the connection and the response body.
-  // `fetch` can resolve after headers while a provider keeps the body open,
-  // which otherwise leaves the Family Care request waiting indefinitely.
+  // Keep one deadline across the initial request and its fallback. DeepSeek
+  // enables thinking by default; for transcription it can spend the output
+  // budget on reasoning and return an empty final answer.
   const controller = new AbortController();
   const deadline = setTimeout(() => controller.abort(), 42_000);
-  let response: Response;
-  let responseBody: string;
+  let parsed: Record<string, unknown> | null = null;
   try {
-    response = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: { authorization: `Bearer ${config.DEEPSEEK_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: 'deepseek-flash',
-      temperature: 0,
-      max_tokens: 2000,
-      response_format: { type: 'json_object' },
-      messages: [{
-        role: 'user',
-        content,
-      }],
-    }),
-      signal: controller.signal,
-    });
-    responseBody = await response.text();
-  } catch {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${config.DEEPSEEK_API_KEY}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'deepseek-flash',
+          thinking: { type: 'disabled' },
+          temperature: 0,
+          max_tokens: 2000,
+          ...(attempt === 0 ? { response_format: { type: 'json_object' } } : {}),
+          messages: [{
+            role: 'user',
+            content: attempt === 0 ? content : typeof content === 'string'
+              ? `${content}\n\nReturn the JSON object directly, without commentary or whitespace-only output.`
+              : [{ ...content[0], text: `${instruction} Return the JSON object directly, without commentary or whitespace-only output.` }, content[1]],
+          }],
+        }),
+        signal: controller.signal,
+      });
+      const responseBody = await response.text();
+      if (!response.ok) {
+        if (response.status === 400 && /unsupported image/i.test(responseBody)) throw new HemogramExtractionError('ai_image_rejected');
+        throw new HemogramExtractionError('ai_request_failed');
+      }
+      let payload: { choices?: Array<{ message?: { content?: string } }> };
+      try {
+        payload = JSON.parse(responseBody) as { choices?: Array<{ message?: { content?: string } }> };
+      } catch {
+        throw new HemogramExtractionError('ai_invalid_response');
+      }
+      const model = payload.choices?.[0]?.message?.content;
+      if (!model?.trim()) {
+        if (attempt === 0) continue;
+        throw new HemogramExtractionError('ai_empty_response');
+      }
+      try {
+        parsed = jsonFromModel(model);
+        break;
+      } catch (error) {
+        if (attempt === 0 && error instanceof HemogramExtractionError) continue;
+        throw error;
+      }
+    }
+  } catch (error) {
+    if (error instanceof HemogramExtractionError) throw error;
     throw new HemogramExtractionError('ai_request_failed');
   } finally {
     clearTimeout(deadline);
   }
-  if (!response.ok) {
-    if (response.status === 400 && /unsupported image/i.test(responseBody)) throw new HemogramExtractionError('ai_image_rejected');
-    throw new HemogramExtractionError('ai_request_failed');
-  }
-  let payload: { choices?: Array<{ message?: { content?: string } }> };
-  try {
-    payload = JSON.parse(responseBody) as { choices?: Array<{ message?: { content?: string } }> };
-  } catch {
-    throw new HemogramExtractionError('ai_invalid_response');
-  }
-  const model = payload.choices?.[0]?.message?.content;
-  if (!model) throw new HemogramExtractionError('ai_empty_response');
-  const parsed = jsonFromModel(model);
+  if (!parsed) throw new HemogramExtractionError('ai_empty_response');
   const allowedCodes = new Set<string>(hemogramFields.map((field) => field.code));
   const results = Array.isArray(parsed.results) ? parsed.results.flatMap((candidate): ExtractedHemogramValue[] => {
     if (!candidate || typeof candidate !== 'object') return [];
