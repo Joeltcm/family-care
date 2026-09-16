@@ -78,7 +78,7 @@ export async function updatePatientProfile(
               emergency_summary = $7,
               updated_at = now()
         WHERE id = $1
-        RETURNING id, legal_name, preferred_name, birth_date, blood_type,
+        RETURNING id, legal_name, preferred_name, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, blood_type,
                   emergency_summary, allergies_summary, relationship_to_owner, linked_user_id`,
       [
         patientId,

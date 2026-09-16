@@ -259,7 +259,7 @@ export async function bootstrapSession(identity: CallerIdentity) {
     );
     const supervised = credential.rows[0]?.is_supervised ?? false;
     const patients = await client.query<PatientRow>(
-      `SELECT p.id, p.legal_name, p.preferred_name, p.birth_date, p.blood_type,
+      `SELECT p.id, p.legal_name, p.preferred_name, to_char(p.birth_date, 'YYYY-MM-DD') AS birth_date, p.blood_type,
               p.emergency_summary, p.allergies_summary, p.relationship_to_owner, p.linked_user_id,
               (NOT $3::boolean AND (p.linked_user_id = $2 OR COALESCE(pp.can_write, false))) AS can_write,
               (NOT $3::boolean AND COALESCE(pp.can_share, false)) AS can_share

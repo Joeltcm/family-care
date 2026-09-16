@@ -164,7 +164,7 @@ export async function openMedicalRecordShare(token: string, pin: string) {
     await client.query('BEGIN');
     const found = await client.query<ShareRow>(
       `SELECT s.id, s.patient_id, p.family_id, p.legal_name, p.preferred_name,
-              p.birth_date, p.blood_type, p.emergency_summary, p.allergies_summary, s.pin_salt, s.pin_hash,
+              to_char(p.birth_date, 'YYYY-MM-DD') AS birth_date, p.blood_type, p.emergency_summary, p.allergies_summary, s.pin_salt, s.pin_hash,
               s.expires_at, s.revoked_at, s.locked_at, s.failed_attempts
          FROM medical_record_shares s
          JOIN patients p ON p.id = s.patient_id

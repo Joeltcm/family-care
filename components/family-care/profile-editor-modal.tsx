@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState } from 'react';
 import type { FamilyCarePatient } from '@/lib/family-care-session';
+import { normalizeDateOnly } from '@/lib/date-only';
 
 const bloodTypes = ['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
 
@@ -16,7 +17,7 @@ export function ProfileEditorModal({
 }) {
   const [legalName, setLegalName] = useState(patient.legalName);
   const [preferredName, setPreferredName] = useState(patient.preferredName || '');
-  const [birthDate, setBirthDate] = useState(patient.birthDate || '');
+  const [birthDate, setBirthDate] = useState(normalizeDateOnly(patient.birthDate) || '');
   const [bloodType, setBloodType] = useState(patient.bloodType || '');
   const [allergiesSummary, setAllergiesSummary] = useState(patient.allergiesSummary || '');
   const [emergencySummary, setEmergencySummary] = useState(patient.emergencySummary || '');
