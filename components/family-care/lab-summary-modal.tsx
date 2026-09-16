@@ -32,7 +32,7 @@ export function LabSummaryModal({ patientName, reports, onClose }: { patientName
         <p className="lab-summary-disclaimer">Este resumen transcribe resultados registrados en Family Care. No constituye diagnóstico ni indica cambios de tratamiento. Contrasta cada dato con el informe original y consulta al médico tratante.</p>
         {ordered.map((report) => <section className="lab-summary-report" key={report.id}>
           <div className="lab-summary-report-heading"><div><h3>{dateLabel(report.collectedAt)}</h3><p>{report.laboratoryName || 'Laboratorio no registrado'} · {report.panelName}</p></div><span className={report.reviewedByUser ? 'review-badge reviewed' : 'review-badge'}>{report.reviewedByUser ? 'Revisado por la familia' : 'Pendiente de revisión'}</span></div>
-          <table><thead><tr><th>Prueba</th><th>Resultado</th><th>Rango del informe</th></tr></thead><tbody>{report.results.map((result) => <tr key={result.id}><td>{result.analyteName}</td><td>{resultValue(result)}</td><td>{referenceRange(result)}</td></tr>)}</tbody></table>
+          <table><thead><tr><th>Prueba</th><th>Resultado</th><th>Rango del informe</th></tr></thead><tbody>{report.results.map((result) => <tr key={result.id}><td>{result.analyteName}{result.correctedByFamily ? ' · Corregido por la familia' : ''}</td><td>{resultValue(result)}</td><td>{referenceRange(result)}</td></tr>)}</tbody></table>
           <p className="lab-summary-source">{report.documentId ? 'Informe original adjunto al expediente.' : 'No hay informe original adjunto a este registro.'}</p>
         </section>)}
       </div>

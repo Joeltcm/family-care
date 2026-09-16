@@ -63,6 +63,7 @@ export type DocumentInput = {
 
 export class ClinicalRecordPermissionError extends Error {}
 export class ClinicalRecordNotFoundError extends Error {}
+export class ClinicalRecordConflictError extends Error {}
 export class HemogramExtractionUnavailableError extends Error {}
 export class HemogramExtractionError extends Error {}
 
@@ -272,7 +273,10 @@ export async function getClinicalRecords(identity: CallerIdentity, patientId: st
       ),
       client.query(
         `SELECT r.id, r.report_id, r.analyte_name, r.analyte_code, r.value_numeric,
-                r.value_text, r.unit, r.reference_low, r.reference_high, r.abnormal_flag
+                r.value_text, r.unit, r.reference_low, r.reference_high, r.abnormal_flag,
+                EXISTS (SELECT 1 FROM audit_events a
+                         WHERE a.resource_type = 'lab_result' AND a.resource_id = r.id
+                           AND a.action = 'lab_result.corrected') AS corrected_by_family
            FROM lab_results r
            JOIN lab_reports lr ON lr.id = r.report_id
           WHERE lr.patient_id = $1
@@ -307,6 +311,7 @@ export async function getClinicalRecords(identity: CallerIdentity, patientId: st
         referenceLow: numberOrNull(row.reference_low),
         referenceHigh: numberOrNull(row.reference_high),
         abnormalFlag: row.abnormal_flag,
+        correctedByFamily: row.corrected_by_family,
       });
       resultsByReport.set(row.report_id, values);
     }
@@ -465,6 +470,68 @@ export async function setLabReportReviewed(identity: CallerIdentity, patientId: 
     );
     await client.query('COMMIT');
     return { id: reportId, reviewedByUser: reviewed };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+type EditableResult = Pick<LabResultInput, 'valueNumeric' | 'valueText' | 'unit' | 'referenceLow' | 'referenceHigh'>;
+
+export async function updateLabResult(identity: CallerIdentity, patientId: string, reportId: string, resultId: string, expected: EditableResult, values: EditableResult) {
+  if (!database) throw new Error('database_not_configured');
+  const client = await database.connect();
+  try {
+    await client.query('BEGIN');
+    const access = await accessForPatient(client, identity, patientId, true);
+    if (!mayWrite(access)) throw new ClinicalRecordPermissionError('clinical_records_write_not_allowed');
+    const report = await client.query(
+      'SELECT id FROM lab_reports WHERE id = $1 AND patient_id = $2 FOR UPDATE',
+      [reportId, patientId],
+    );
+    if (!report.rowCount) throw new ClinicalRecordNotFoundError('lab_report_not_found');
+    const existing = await client.query(
+      `SELECT id, analyte_name, value_numeric, value_text, unit, reference_low, reference_high
+         FROM lab_results WHERE id = $1 AND report_id = $2 FOR UPDATE`,
+      [resultId, reportId],
+    );
+    if (!existing.rowCount) throw new ClinicalRecordNotFoundError('lab_result_not_found');
+    const row = existing.rows[0];
+    const previous: EditableResult = {
+      valueNumeric: numberOrNull(row.value_numeric),
+      valueText: row.value_text,
+      unit: row.unit,
+      referenceLow: numberOrNull(row.reference_low),
+      referenceHigh: numberOrNull(row.reference_high),
+    };
+    if (JSON.stringify(previous) !== JSON.stringify(expected)) throw new ClinicalRecordConflictError('lab_result_changed');
+    if (JSON.stringify(previous) === JSON.stringify(values)) {
+      await client.query('COMMIT');
+      return { id: resultId, changed: false };
+    }
+    const abnormalFlag = values.valueNumeric !== null
+      && ((values.referenceLow !== null && values.valueNumeric < values.referenceLow)
+        || (values.referenceHigh !== null && values.valueNumeric > values.referenceHigh))
+      ? 'outside_lab_range' : null;
+    await client.query(
+      `UPDATE lab_results
+          SET value_numeric = $2, value_text = $3, unit = $4,
+              reference_low = $5, reference_high = $6, abnormal_flag = $7
+        WHERE id = $1`,
+      [resultId, values.valueNumeric, values.valueText, values.unit, values.referenceLow, values.referenceHigh, abnormalFlag],
+    );
+    await client.query('UPDATE lab_reports SET reviewed_by_user = false WHERE id = $1', [reportId]);
+    await client.query(
+      `INSERT INTO audit_events
+         (actor_user_id, family_id, patient_id, action, resource_type, resource_id, metadata)
+       VALUES ($1, $2, $3, 'lab_result.corrected', 'lab_result', $4, $5)`,
+      [access!.user_id, access!.family_id, patientId, resultId,
+        JSON.stringify({ reportId, analyteName: row.analyte_name, before: previous, after: values, reviewReset: true })],
+    );
+    await client.query('COMMIT');
+    return { id: resultId, changed: true, reviewedByUser: false };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

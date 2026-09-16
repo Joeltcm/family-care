@@ -9,6 +9,7 @@ import { checkDatabase, database } from './database.js';
 import { renderClinicalRecord, renderShareGate } from './share-page.js';
 import {
   ClinicalRecordNotFoundError,
+  ClinicalRecordConflictError,
   ClinicalRecordPermissionError,
   createDocument,
   createEncounter,
@@ -19,6 +20,7 @@ import {
   HemogramExtractionError,
   HemogramExtractionUnavailableError,
   setLabReportReviewed,
+  updateLabResult,
 } from './services/clinical-records.js';
 import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
 import {
@@ -297,6 +299,15 @@ const labResultSchema = z.object({
   if (value.valueNumeric === null && !value.valueText) {
     context.addIssue({ code: 'custom', message: 'result_value_required', path: ['valueNumeric'] });
   }
+  if (value.referenceLow !== null && value.referenceHigh !== null && value.referenceLow > value.referenceHigh) {
+    context.addIssue({ code: 'custom', message: 'invalid_reference_range', path: ['referenceHigh'] });
+  }
+});
+
+const editableLabResultSchema = labResultSchema.pick({
+  valueNumeric: true, valueText: true, unit: true, referenceLow: true, referenceHigh: true,
+}).superRefine((value, context) => {
+  if (value.valueNumeric === null && !value.valueText) context.addIssue({ code: 'custom', message: 'result_value_required', path: ['valueNumeric'] });
   if (value.referenceLow !== null && value.referenceHigh !== null && value.referenceLow > value.referenceHigh) {
     context.addIssue({ code: 'custom', message: 'invalid_reference_range', path: ['referenceHigh'] });
   }
@@ -701,6 +712,22 @@ app.patch('/v1/patients/:patientId/lab-reports/:reportId/review', { config: { ra
   } catch (error) {
     if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
     if (error instanceof ClinicalRecordNotFoundError) return reply.code(404).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.patch('/v1/patients/:patientId/lab-reports/:reportId/results/:resultId', { config: { rateLimit: { max: 60, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid(), reportId: z.string().uuid(), resultId: z.string().uuid() }).safeParse(request.params);
+  const body = z.object({ expected: editableLabResultSchema, values: editableLabResultSchema }).strict().safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_lab_result', issues: body.success ? [] : body.error.issues });
+  try {
+    return await updateLabResult(identity, params.data.patientId, params.data.reportId, params.data.resultId, body.data.expected, body.data.values);
+  } catch (error) {
+    if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof ClinicalRecordNotFoundError) return reply.code(404).send({ error: error.message });
+    if (error instanceof ClinicalRecordConflictError) return reply.code(409).send({ error: error.message });
     throw error;
   }
 });

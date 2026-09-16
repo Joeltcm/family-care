@@ -22,6 +22,7 @@ export type LabResult = {
   referenceLow: number | null;
   referenceHigh: number | null;
   abnormalFlag: string | null;
+  correctedByFamily: boolean;
 };
 
 export type LabReport = {
