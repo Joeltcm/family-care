@@ -112,7 +112,7 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
       if (file) {
         const uploaded = await uploadClinicalDocument({ patientId: patient.id, category: 'lab', title: `Hemograma · ${collectedAt}`, capturedAt: new Date(`${collectedAt}T12:00:00-05:00`).toISOString(), file });
         documentId = uploaded.id;
-        if (uploaded.optimizedBytes !== null) compressionMessage = ` Vista móvil reducida ${Math.max(0, Math.round((1 - uploaded.optimizedBytes / uploaded.originalBytes) * 100))}%.`;
+        if (uploaded.compressed) compressionMessage = ` Archivo comprimido ${Math.max(0, Math.round((1 - uploaded.storedBytes / uploaded.sourceBytes) * 100))}%.`;
       }
       const response = await fetch(`/api/family-care/patients/${encodeURIComponent(patient.id)}/lab-reports`, {
         method: 'POST',

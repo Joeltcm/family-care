@@ -15,10 +15,12 @@ export async function GET(request: Request, context: { params: Promise<{ documen
     const object = await storage.get(metadata.objectKey);
     if (!object) return Response.json({ error: 'document_bytes_not_found' }, { status: 404 });
     const safeTitle = metadata.title.replace(/[^a-zA-Z0-9._ -]/g, '_').slice(0, 100) || 'documento';
+    const contentEncoding = object.customMetadata?.contentEncoding;
     return new Response(object.body, {
       headers: {
         'content-type': metadata.contentType,
         'content-length': String(metadata.sizeBytes),
+        ...(contentEncoding === 'gzip' ? { 'content-encoding': 'gzip' } : {}),
         'content-disposition': `inline; filename="${safeTitle}"; filename*=UTF-8''${encodeURIComponent(metadata.title)}`,
         'cache-control': 'private, no-store, max-age=0',
         'x-content-type-options': 'nosniff',

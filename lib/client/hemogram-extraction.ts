@@ -1,6 +1,22 @@
 'use client';
 
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
+
 const analysisMimeType = 'image/jpeg';
+
+// Vite must emit the PDF.js worker as an application asset. Without an explicit
+// URL, PDF.js attempts to infer it from the current bundle and PDF uploads fail
+// before the information can be sent for transcription.
+let workerConfigured = false;
+
+async function pdfLibrary() {
+  const pdf = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  if (!workerConfigured) {
+    pdf.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    workerConfigured = true;
+  }
+  return pdf;
+}
 
 function canvasBlob(canvas: HTMLCanvasElement) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, analysisMimeType, 0.92));
@@ -24,10 +40,10 @@ async function imageFromFile(file: File) {
 }
 
 async function imageFromPdf(file: File) {
-  const pdf = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const document = await pdf.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const pdf = await pdfLibrary();
+  const pdfDocument = await pdf.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   try {
-    const page = await document.getPage(1);
+    const page = await pdfDocument.getPage(1);
     const initial = page.getViewport({ scale: 1 });
     const scale = Math.min(2.2, 2400 / Math.max(initial.width, initial.height));
     const viewport = page.getViewport({ scale });
@@ -36,10 +52,10 @@ async function imageFromPdf(file: File) {
     canvas.height = Math.max(1, Math.round(viewport.height));
     const context = canvas.getContext('2d', { alpha: false });
     if (!context) throw new Error('analysis_image_unavailable');
-    await page.render({ canvasContext: context, viewport }).promise;
+    await page.render({ canvas, canvasContext: context, viewport }).promise;
     return canvasBlob(canvas);
   } finally {
-    await document.destroy();
+    await pdfDocument.destroy();
   }
 }
 

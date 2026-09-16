@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     const capturedAt = String(form.get('capturedAt') || '') || null;
     const original = form.get('original');
     const optimized = form.get('optimized');
+    const originalContentEncoding = form.get('originalContentEncoding') === 'gzip' ? 'gzip' : undefined;
     if (!uuid.test(patientId) || !categories.has(category) || title.length < 2 || title.length > 180 || !(original instanceof File)) {
       return Response.json({ error: 'invalid_document' }, { status: 400 });
     }
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
       const objectKey = `medical/${patientId}/${uploadId}/${variant}`;
       await storage.put(objectKey, data, {
         httpMetadata: { contentType: file.type },
-        customMetadata: { sha256, variant },
+        customMetadata: { sha256, variant, ...(variant === 'original' && originalContentEncoding ? { contentEncoding: originalContentEncoding } : {}) },
       });
       written.push(objectKey);
       versions.push({ objectKey, contentType: file.type, sizeBytes: file.size, sha256, variant });
