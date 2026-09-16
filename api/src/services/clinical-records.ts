@@ -42,6 +42,7 @@ export type LabReportInput = {
   laboratoryName: string | null;
   panelName: string;
   documentId: string | null;
+  reviewedByUser: boolean;
   results: LabResultInput[];
 };
 
@@ -405,10 +406,10 @@ export async function createLabReport(identity: CallerIdentity, patientId: strin
       `INSERT INTO lab_reports
          (patient_id, collected_at, reported_at, laboratory_name, panel_name, document_id,
           extraction_status, reviewed_by_user, recorded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, 'manual', true, $7)
+       VALUES ($1, $2, $3, $4, $5, $6, 'manual', $7, $8)
        RETURNING id`,
       [patientId, input.collectedAt, input.reportedAt, input.laboratoryName, input.panelName,
-        input.documentId, access!.user_id],
+        input.documentId, input.reviewedByUser, access!.user_id],
     );
     for (const result of input.results) {
       const abnormalFlag = result.valueNumeric !== null
@@ -430,10 +431,40 @@ export async function createLabReport(identity: CallerIdentity, patientId: strin
          (actor_user_id, family_id, patient_id, action, resource_type, resource_id, metadata)
        VALUES ($1, $2, $3, 'lab_report.created', 'lab_report', $4, $5)`,
       [access!.user_id, access!.family_id, patientId, report.rows[0].id,
-        JSON.stringify({ panelName: input.panelName, resultCount: input.results.length, reviewedByUser: true, hasDocument: Boolean(input.documentId) })],
+        JSON.stringify({ panelName: input.panelName, resultCount: input.results.length, reviewedByUser: input.reviewedByUser, hasDocument: Boolean(input.documentId) })],
     );
     await client.query('COMMIT');
     return { id: report.rows[0].id, created: true };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function setLabReportReviewed(identity: CallerIdentity, patientId: string, reportId: string, reviewed: boolean) {
+  if (!database) throw new Error('database_not_configured');
+  const client = await database.connect();
+  try {
+    await client.query('BEGIN');
+    const access = await accessForPatient(client, identity, patientId, true);
+    if (!mayWrite(access)) throw new ClinicalRecordPermissionError('clinical_records_write_not_allowed');
+    const updated = await client.query<{ id: string }>(
+      `UPDATE lab_reports SET reviewed_by_user = $3
+        WHERE id = $1 AND patient_id = $2
+        RETURNING id`,
+      [reportId, patientId, reviewed],
+    );
+    if (!updated.rowCount) throw new ClinicalRecordNotFoundError('lab_report_not_found');
+    await client.query(
+      `INSERT INTO audit_events
+         (actor_user_id, family_id, patient_id, action, resource_type, resource_id, metadata)
+       VALUES ($1, $2, $3, 'lab_report.review_changed', 'lab_report', $4, $5)`,
+      [access!.user_id, access!.family_id, patientId, reportId, JSON.stringify({ reviewedByUser: reviewed })],
+    );
+    await client.query('COMMIT');
+    return { id: reportId, reviewedByUser: reviewed };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

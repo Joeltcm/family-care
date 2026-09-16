@@ -579,3 +579,57 @@ button { color: inherit; }
   button { transition: transform .18s ease, background-color .18s ease, border-color .18s ease, color .18s ease; }
   @keyframes status-pulse { 50% { opacity: .35; } }
 }
+
+.lab-review-list { margin-top: 28px; border-top: 1px solid #dce9e7; padding-top: 22px; }
+.lab-units-warning { border: 1px solid #e8d9bf; border-radius: 12px; padding: 14px; background: #fffaf1; color: #765f42; font-size: 14px; line-height: 1.5; }
+.lab-review-heading h2 { margin: 0; color: #214650; font-size: 18px; }
+.lab-review-heading p { margin: 7px 0 16px; color: #607980; font-size: 14px; line-height: 1.5; }
+.lab-review-item { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; border-top: 1px solid #edf2f1; padding: 14px 0; }
+.lab-review-item > div { display: grid; gap: 4px; flex: 1 1 175px; }
+.lab-review-item strong { color: #214650; font-size: 15px; }
+.lab-review-item > div span { color: #607980; font-size: 13px; }
+.lab-review-item button { border: 1px solid #bcd6d2; border-radius: 10px; padding: 9px 12px; background: white; color: #116f69; font-size: 13px; font-weight: 750; cursor: pointer; }
+.lab-review-item button:disabled { opacity: .55; cursor: wait; }
+.review-badge { display: inline-flex; width: fit-content; border-radius: 999px; padding: 6px 10px; background: #fff5e7; color: #8a622f; font-size: 12px; font-weight: 800; }
+.review-badge.reviewed { background: #e7f6f1; color: #126e60; }
+.lab-summary-dialog { width: min(790px, 100%); max-height: min(900px, calc(100vh - 32px)); overflow: auto; border-radius: 22px; background: white; box-shadow: 0 28px 80px rgb(0 0 0 / 25%); }
+.lab-summary-actions { display: flex; justify-content: flex-end; gap: 10px; border-bottom: 1px solid #e0e9e7; padding: 16px 24px; }
+.lab-summary-actions > button:first-child { border: 1px solid #cbdcda; border-radius: 10px; padding: 10px 14px; background: white; color: #31535c; font-size: 14px; cursor: pointer; }
+.lab-summary-actions .primary-action { font-size: 14px; }
+.lab-summary-print { padding: 28px 34px 38px; color: #233f48; }
+.lab-summary-header { display: grid; gap: 7px; border-bottom: 2px solid #117f75; padding-bottom: 20px; }
+.lab-summary-header p { margin: 0; color: #127c73; font-size: 12px; font-weight: 900; letter-spacing: .11em; }
+.lab-summary-header h2 { margin: 0; font-size: 29px; letter-spacing: -.035em; }
+.lab-summary-header strong { font-size: 18px; }
+.lab-summary-header > span { color: #607980; font-size: 13px; }
+.lab-summary-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.lab-summary-stats span { border-radius: 9px; padding: 8px 10px; background: #ecf7f5; color: #235f5c; font-size: 13px; font-weight: 750; }
+.lab-summary-disclaimer { border-left: 3px solid #c79757; padding: 8px 12px; background: #fffaf3; color: #6c624d; font-size: 13px; line-height: 1.55; }
+.lab-summary-report { margin-top: 25px; break-inside: avoid; }
+.lab-summary-report-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+.lab-summary-report-heading h3 { margin: 0; font-size: 18px; }
+.lab-summary-report-heading p, .lab-summary-source { margin: 4px 0 0; color: #607980; font-size: 13px; }
+.lab-summary-report table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lab-summary-report th { padding: 9px 7px; background: #eef7f5; color: #275d5b; text-align: left; }
+.lab-summary-report td { border-bottom: 1px solid #e4ecea; padding: 8px 7px; }
+.lab-summary-source { margin-top: 9px; }
+
+@media (max-width: 600px) {
+  .lab-review-item .review-badge { order: 3; }
+  .lab-summary-backdrop { padding: 10px; }
+  .lab-summary-actions { flex-direction: column-reverse; padding: 14px; }
+  .lab-summary-actions button { width: 100%; }
+  .lab-summary-print { padding: 20px 16px 30px; }
+  .lab-summary-header h2 { font-size: 24px; }
+  .lab-summary-report-heading { flex-direction: column; }
+}
+
+@media print {
+  @page { size: A4; margin: 14mm; }
+  body > :not(.lab-summary-backdrop) { display: none !important; }
+  .lab-summary-backdrop { position: static; display: block; overflow: visible; padding: 0; background: white; backdrop-filter: none; }
+  .lab-summary-dialog { width: 100%; max-height: none; overflow: visible; border-radius: 0; box-shadow: none; }
+  .lab-summary-actions { display: none; }
+  .lab-summary-print { width: 100%; padding: 0; }
+  .lab-summary-report { break-inside: avoid; }
+}

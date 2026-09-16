@@ -18,6 +18,7 @@ import {
   getDocumentVersion,
   HemogramExtractionError,
   HemogramExtractionUnavailableError,
+  setLabReportReviewed,
 } from './services/clinical-records.js';
 import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
 import {
@@ -307,6 +308,7 @@ const labReportSchema = z.object({
   laboratoryName: optionalText(180),
   panelName: z.string().trim().min(2).max(160),
   documentId: z.string().uuid().nullable(),
+  reviewedByUser: z.boolean().default(false),
   results: z.array(labResultSchema).min(1).max(30),
 }).strict().superRefine((value, context) => {
   if (Date.parse(value.collectedAt) > Date.now() + 5 * 60_000) {
@@ -681,6 +683,21 @@ app.post('/v1/patients/:patientId/lab-reports', { config: { rateLimit: { max: 60
   if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_lab_report', issues: body.success ? [] : body.error.issues });
   try {
     return reply.code(201).send(await createLabReport(identity, params.data.patientId, body.data));
+  } catch (error) {
+    if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof ClinicalRecordNotFoundError) return reply.code(404).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.patch('/v1/patients/:patientId/lab-reports/:reportId/review', { config: { rateLimit: { max: 60, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid(), reportId: z.string().uuid() }).safeParse(request.params);
+  const body = z.object({ reviewed: z.boolean() }).strict().safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_lab_review' });
+  try {
+    return await setLabReportReviewed(identity, params.data.patientId, params.data.reportId, body.data.reviewed);
   } catch (error) {
     if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
     if (error instanceof ClinicalRecordNotFoundError) return reply.code(404).send({ error: error.message });

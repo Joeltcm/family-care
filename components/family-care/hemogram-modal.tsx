@@ -33,6 +33,7 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [aiConsent, setAiConsent] = useState(false);
+  const [reviewed, setReviewed] = useState(false);
   const [extractionNote, setExtractionNote] = useState('');
   const [error, setError] = useState('');
 
@@ -142,6 +143,7 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
           laboratoryName: laboratoryName.trim() || null,
           panelName: 'Hemograma y seguimiento de hemólisis',
           documentId,
+          reviewedByUser: reviewed,
           results,
         }),
       });
@@ -167,6 +169,7 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
         <button className="secondary-action" type="button" disabled={!file || extracting} onClick={extractFromDocument}>{extracting ? 'Leyendo informe…' : '⌁ Leer y completar datos'}</button>
         {extractionNote && <p className="permission-status enabled">✓ {extractionNote}</p>}
         <div className="data-caution"><strong>Revisión obligatoria</strong><span>La lectura puede confundir números, unidades o rangos. Confirma cada valor con el informe original; el hematólogo determina su significado y cualquier cambio de tratamiento.</span></div>
+        {Object.values(entries).some((entry) => entry.value.trim()) && <label className="consent-check"><input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} /><span>Contrasté la fecha, los valores, las unidades y los rangos con el informe original. Marcar como «Revisado por la familia».</span></label>}
         {error && <p className="share-error" role="alert">{error}</p>}
         <div className="profile-modal-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-action" disabled={saving} type="submit">{saving ? 'Guardando…' : file && !Object.values(entries).some((entry) => entry.value.trim()) ? 'Guardar solo informe' : 'Guardar hemograma'}</button></div>
       </form>
