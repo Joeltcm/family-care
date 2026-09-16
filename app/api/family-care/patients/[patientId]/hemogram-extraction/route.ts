@@ -9,7 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pat
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: await request.text(),
-    });
+    }, 55_000);
     return new Response(await response.text(), { status: response.status, headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' } });
   } catch (error) {
     return bridgeError(error);

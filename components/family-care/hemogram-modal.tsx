@@ -80,6 +80,10 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
         ? 'La lectura automática aún no está activada. Falta configurar DeepSeek de forma segura.'
         : code === 'ai_no_values_found'
           ? 'No se identificaron valores legibles. Prueba una imagen más nítida o completa los campos necesarios.'
+          : code === 'ai_request_failed'
+            ? 'DeepSeek no pudo procesar el informe en este momento. Espera unos segundos e inténtalo nuevamente.'
+            : code === 'ai_image_invalid'
+              ? 'No se pudo preparar una copia legible del archivo. Prueba con un PDF o imagen diferente.'
           : 'No fue posible leer el informe automáticamente. Verifica el archivo e inténtalo de nuevo.');
     } finally {
       setExtracting(false);

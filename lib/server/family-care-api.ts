@@ -142,7 +142,7 @@ export async function getFamilyCareIdentity(request: Request): Promise<FamilyCar
   return await getPasswordIdentity(request) || getOpenAiIdentity(request) || await getCloudflareAccessIdentity(request);
 }
 
-export async function callFamilyCareApi(request: Request, path: string, init: RequestInit = {}) {
+export async function callFamilyCareApi(request: Request, path: string, init: RequestInit = {}, timeoutMs = 8_000) {
   const apiUrl = process.env.FAMILY_CARE_API_URL;
   const serviceKey = process.env.FAMILY_CARE_SERVICE_KEY;
   const identity = await getFamilyCareIdentity(request);
@@ -162,7 +162,7 @@ export async function callFamilyCareApi(request: Request, path: string, init: Re
     ...init,
     headers,
     cache: 'no-store',
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 }
 

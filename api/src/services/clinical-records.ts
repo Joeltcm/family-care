@@ -123,12 +123,21 @@ export async function extractHemogramFromImage(identity: CallerIdentity, patient
   }
 
   const requestedFields = hemogramFields.map((field) => field.code).join(', ');
-  const response = await fetch('https://api.deepseek.com/chat/completions', {
+  // Keep a single deadline over both the connection and the response body.
+  // `fetch` can resolve after headers while a provider keeps the body open,
+  // which otherwise leaves the Family Care request waiting indefinitely.
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 42_000);
+  let response: Response;
+  let responseBody: string;
+  try {
+    response = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
     headers: { authorization: `Bearer ${config.DEEPSEEK_API_KEY}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       model: 'deepseek-flash',
       temperature: 0,
+      max_tokens: 900,
       response_format: { type: 'json_object' },
       messages: [{
         role: 'user',
@@ -138,10 +147,21 @@ export async function extractHemogramFromImage(identity: CallerIdentity, patient
         ],
       }],
     }),
-    signal: AbortSignal.timeout(45_000),
-  });
+      signal: controller.signal,
+    });
+    responseBody = await response.text();
+  } catch {
+    throw new HemogramExtractionError('ai_request_failed');
+  } finally {
+    clearTimeout(deadline);
+  }
   if (!response.ok) throw new HemogramExtractionError('ai_request_failed');
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  let payload: { choices?: Array<{ message?: { content?: string } }> };
+  try {
+    payload = JSON.parse(responseBody) as { choices?: Array<{ message?: { content?: string } }> };
+  } catch {
+    throw new HemogramExtractionError('ai_invalid_response');
+  }
   const model = payload.choices?.[0]?.message?.content;
   if (!model) throw new HemogramExtractionError('ai_empty_response');
   const parsed = jsonFromModel(model);
