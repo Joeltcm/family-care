@@ -65,7 +65,7 @@ export class ClinicalRecordNotFoundError extends Error {}
 export class HemogramExtractionUnavailableError extends Error {}
 export class HemogramExtractionError extends Error {}
 
-export type HemogramExtractionInput = {
+export type HemogramExtractionInput = { text: string } | {
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
   base64: string;
 };
@@ -93,6 +93,7 @@ type ExtractedHemogramValue = {
 };
 
 function numeric(value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
   const parsed = typeof value === 'number' ? value : Number(String(value ?? '').replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -111,8 +112,10 @@ export async function extractHemogramFromImage(identity: CallerIdentity, patient
     throw new HemogramExtractionUnavailableError('ai_extraction_not_configured');
   }
   if (!database) throw new Error('database_not_configured');
-  const source = Buffer.from(input.base64, 'base64');
-  if (!source.length || source.length > 4 * 1024 * 1024) throw new HemogramExtractionError('ai_image_invalid');
+  if ('base64' in input) {
+    const source = Buffer.from(input.base64, 'base64');
+    if (!source.length || source.length > 4 * 1024 * 1024) throw new HemogramExtractionError('ai_image_invalid');
+  }
 
   const client = await database.connect();
   try {
@@ -123,6 +126,13 @@ export async function extractHemogramFromImage(identity: CallerIdentity, patient
   }
 
   const requestedFields = hemogramFields.map((field) => field.code).join(', ');
+  const instruction = `Transcribe only the visible laboratory data from this hemogram. Do not diagnose, infer missing values, or modify units. Return JSON only: {"collectedAt":"YYYY-MM-DD or null","laboratoryName":"string or null","results":[{"code":"one of ${requestedFields}","value":number or null,"unit":"string or null","referenceLow":number or null,"referenceHigh":number or null,"confidence":number 0..1}]}. Include only clearly visible values.`;
+  const content = 'text' in input
+    ? `${instruction}\n\nDocument text:\n${input.text}`
+    : [
+        { type: 'text', text: instruction },
+        { type: 'image_url', image_url: { url: `data:${input.mimeType};base64,${input.base64}`, detail: 'original' } },
+      ];
   // Keep a single deadline over both the connection and the response body.
   // `fetch` can resolve after headers while a provider keeps the body open,
   // which otherwise leaves the Family Care request waiting indefinitely.
@@ -137,14 +147,11 @@ export async function extractHemogramFromImage(identity: CallerIdentity, patient
     body: JSON.stringify({
       model: 'deepseek-flash',
       temperature: 0,
-      max_tokens: 900,
+      max_tokens: 2000,
       response_format: { type: 'json_object' },
       messages: [{
         role: 'user',
-        content: [
-          { type: 'text', text: `Transcribe only the visible laboratory data from this hemogram. Do not diagnose, infer missing values, or modify units. Return JSON only: {"collectedAt":"YYYY-MM-DD or null","laboratoryName":"string or null","results":[{"code":"one of ${requestedFields}","value":number or null,"unit":"string or null","referenceLow":number or null,"referenceHigh":number or null,"confidence":number 0..1}]}. Include only clearly visible values.` },
-          { type: 'image_url', image_url: { url: `data:${input.mimeType};base64,${input.base64}`, detail: 'original' } },
-        ],
+        content,
       }],
     }),
       signal: controller.signal,
@@ -155,7 +162,10 @@ export async function extractHemogramFromImage(identity: CallerIdentity, patient
   } finally {
     clearTimeout(deadline);
   }
-  if (!response.ok) throw new HemogramExtractionError('ai_request_failed');
+  if (!response.ok) {
+    if (response.status === 400 && /unsupported image/i.test(responseBody)) throw new HemogramExtractionError('ai_image_rejected');
+    throw new HemogramExtractionError('ai_request_failed');
+  }
   let payload: { choices?: Array<{ message?: { content?: string } }> };
   try {
     payload = JSON.parse(responseBody) as { choices?: Array<{ message?: { content?: string } }> };

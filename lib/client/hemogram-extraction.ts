@@ -18,8 +18,8 @@ async function pdfLibrary() {
   return pdf;
 }
 
-function canvasBlob(canvas: HTMLCanvasElement) {
-  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, analysisMimeType, 0.92));
+function canvasBlob(canvas: HTMLCanvasElement, type = analysisMimeType) {
+  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, type === 'image/jpeg' ? 0.92 : undefined));
 }
 
 async function imageFromFile(file: File) {
@@ -53,7 +53,7 @@ async function imageFromPdf(file: File) {
     const context = canvas.getContext('2d', { alpha: false });
     if (!context) throw new Error('analysis_image_unavailable');
     await page.render({ canvas, canvasContext: context, viewport }).promise;
-    return canvasBlob(canvas);
+    return canvasBlob(canvas, 'image/png');
   } finally {
     await pdfDocument.destroy();
   }
@@ -68,7 +68,28 @@ async function dataBase64(blob: Blob) {
 }
 
 export async function prepareHemogramExtractionImage(file: File) {
+  if (file.type === 'application/pdf') {
+    try {
+      const pdf = await pdfLibrary();
+      const pdfDocument = await pdf.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+      try {
+        const pages: string[] = [];
+        for (let index = 1; index <= Math.min(pdfDocument.numPages, 4); index += 1) {
+          const page = await pdfDocument.getPage(index);
+          const content = await page.getTextContent();
+          const lines = content.items.map((item) => 'str' in item ? String(item.str) : '').filter(Boolean);
+          pages.push(lines.join(' '));
+        }
+        const text = pages.join('\n').replace(/\s+/g, ' ').trim().slice(0, 20_000);
+        if (text.length >= 120) return { text };
+      } finally {
+        await pdfDocument.destroy();
+      }
+    } catch {
+      // A scanned or malformed text layer can still be rendered as an image.
+    }
+  }
   const image = file.type === 'application/pdf' ? await imageFromPdf(file) : await imageFromFile(file);
   if (!image || image.size > 4 * 1024 * 1024) throw new Error('analysis_image_too_large');
-  return { mimeType: analysisMimeType, base64: await dataBase64(image) };
+  return { mimeType: image.type || analysisMimeType, base64: await dataBase64(image) };
 }

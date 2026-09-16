@@ -254,10 +254,14 @@ const patientProfileSchema = z.object({
 const optionalText = (maximum: number) => z.string().trim().max(maximum).nullable();
 const isoDateTime = z.string().datetime({ offset: true });
 
-const hemogramExtractionSchema = z.object({
+const hemogramImageSchema = z.object({
   mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
   base64: z.string().min(100).max(5_600_000).regex(/^[A-Za-z0-9+/]+={0,2}$/),
 }).strict();
+const hemogramExtractionSchema = z.union([
+  hemogramImageSchema,
+  z.object({ text: z.string().trim().min(120).max(20_000) }).strict(),
+]);
 
 const encounterSchema = z.object({
   occurredAt: isoDateTime,
@@ -695,7 +699,10 @@ app.post('/v1/patients/:patientId/hemogram-extraction', { bodyLimit: 6 * 1024 * 
   } catch (error) {
     if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
     if (error instanceof HemogramExtractionUnavailableError) return reply.code(503).send({ error: error.message });
-    if (error instanceof HemogramExtractionError) return reply.code(422).send({ error: error.message });
+    if (error instanceof HemogramExtractionError) {
+      request.log.warn({ extractionError: error.message }, 'hemogram extraction failed');
+      return reply.code(422).send({ error: error.message });
+    }
     throw error;
   }
 });

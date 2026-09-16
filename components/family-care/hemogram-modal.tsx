@@ -86,15 +86,16 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
     } catch (reason) {
       const code = reason instanceof Error ? reason.message : '';
       setExtractionNote('');
-      setError(code === 'ai_extraction_not_configured'
-        ? 'La lectura automática aún no está activada. Falta configurar DeepSeek de forma segura.'
-        : code === 'ai_no_values_found'
-          ? 'No se identificaron valores legibles. Prueba una imagen más nítida o completa los campos necesarios.'
-          : code === 'ai_request_failed'
-            ? 'DeepSeek no pudo procesar el informe en este momento. Espera unos segundos e inténtalo nuevamente.'
-            : code === 'ai_image_invalid'
-              ? 'No se pudo preparar una copia legible del archivo. Prueba con un PDF o imagen diferente.'
-          : 'No fue posible leer el informe automáticamente. Verifica el archivo e inténtalo de nuevo.');
+      const messages: Record<string, string> = {
+        ai_extraction_not_configured: 'La lectura automática aún no está activada. Falta configurar DeepSeek de forma segura.',
+        ai_no_values_found: 'No se identificaron valores legibles. Prueba una imagen más nítida o completa los campos necesarios.',
+        ai_request_failed: 'DeepSeek no pudo procesar el informe en este momento. Espera unos segundos e inténtalo nuevamente.',
+        ai_image_invalid: 'No se pudo preparar una copia legible del archivo. Prueba con un PDF o imagen diferente.',
+        ai_image_rejected: 'DeepSeek rechazó la imagen del informe. Si es posible, usa un PDF con texto seleccionable o una imagen JPG nítida.',
+        ai_empty_response: 'DeepSeek no devolvió datos. Inténtalo nuevamente o usa una copia más nítida del informe.',
+        ai_invalid_response: 'DeepSeek devolvió una respuesta que no se pudo interpretar. Inténtalo nuevamente.',
+      };
+      setError(`${messages[code] || 'No fue posible leer el informe automáticamente. Verifica el archivo e inténtalo de nuevo.'} Puedes guardar el PDF sin ingresar valores.`);
     } finally {
       setExtracting(false);
     }
@@ -117,7 +118,7 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
         referenceHigh: entry.high === '' ? null : numberFromInput(entry.high),
       }];
     });
-    if (!results.length) return setError('Ingresa al menos un resultado numérico.');
+    if (!results.length && !file) return setError('Selecciona un informe o ingresa al menos un resultado numérico.');
     setSaving(true);
     setError('');
     try {
@@ -127,6 +128,10 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
         const uploaded = await uploadClinicalDocument({ patientId: patient.id, category: 'lab', title: `Hemograma · ${collectedAt}`, capturedAt: new Date(`${collectedAt}T12:00:00-05:00`).toISOString(), file });
         documentId = uploaded.id;
         if (uploaded.compressed) compressionMessage = ` Archivo comprimido ${Math.max(0, Math.round((1 - uploaded.storedBytes / uploaded.sourceBytes) * 100))}%.`;
+      }
+      if (!results.length) {
+        onSaved(`Informe guardado en documentos.${compressionMessage} Los valores siguen pendientes de lectura y revisión.`);
+        return;
       }
       const response = await fetch(`/api/family-care/patients/${encodeURIComponent(patient.id)}/lab-reports`, {
         method: 'POST',
@@ -163,7 +168,7 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
         {extractionNote && <p className="permission-status enabled">✓ {extractionNote}</p>}
         <div className="data-caution"><strong>Revisión obligatoria</strong><span>La lectura puede confundir números, unidades o rangos. Confirma cada valor con el informe original; el hematólogo determina su significado y cualquier cambio de tratamiento.</span></div>
         {error && <p className="share-error" role="alert">{error}</p>}
-        <div className="profile-modal-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-action" disabled={saving} type="submit">{saving ? 'Guardando…' : 'Guardar hemograma'}</button></div>
+        <div className="profile-modal-actions"><button type="button" onClick={onClose}>Cancelar</button><button className="primary-action" disabled={saving} type="submit">{saving ? 'Guardando…' : file && !Object.values(entries).some((entry) => entry.value.trim()) ? 'Guardar solo informe' : 'Guardar hemograma'}</button></div>
       </form>
     </section>
   </div>;
