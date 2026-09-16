@@ -48,11 +48,21 @@ export function HemogramModal({ patient, onClose, onSaved }: { patient: FamilyCa
     setExtractionNote('Preparando el documento para lectura…');
     try {
       const source = await prepareHemogramExtractionImage(file);
-      const response = await fetch(`/api/family-care/patients/${encodeURIComponent(patient.id)}/hemogram-extraction`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(source),
-      });
+      let response: Response | undefined;
+      // Railway can briefly return 503 while a newly deployed container becomes
+      // ready. Retry once automatically so the user does not need to repeat a
+      // consented document-reading action in that short window.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        response = await fetch(`/api/family-care/patients/${encodeURIComponent(patient.id)}/hemogram-extraction`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(source),
+        });
+        if (response.status !== 503 || attempt === 1) break;
+        setExtractionNote('El servicio se está preparando; reintentando la lectura…');
+        await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+      }
+      if (!response) throw new Error('ai_extraction_failed');
       const payload = await response.json().catch(() => ({})) as Extraction | { error?: string };
       if (!response.ok || !('results' in payload)) throw new Error('error' in payload ? payload.error : 'ai_extraction_failed');
       if (!payload.results.length) throw new Error('ai_no_values_found');
