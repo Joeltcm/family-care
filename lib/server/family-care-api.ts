@@ -114,7 +114,15 @@ async function getPasswordIdentity(request: Request): Promise<FamilyCareIdentity
     });
     if (!response.ok) return null;
     const identity = await response.json() as FamilyCareIdentity;
-    return identity.subject && identity.email && identity.displayName ? identity : null;
+    if (!identity.subject || !identity.email || !identity.displayName) return null;
+
+    // Password sessions are resolved from an internal user UUID. Send that UUID
+    // through the service bridge rather than its transport-only `password:`
+    // prefix, which some proxy paths reject as an invalid caller identity.
+    const subject = identity.subject.startsWith('password:')
+      ? identity.subject.slice('password:'.length)
+      : identity.subject;
+    return subject ? { ...identity, subject } : null;
   } catch {
     return null;
   }
