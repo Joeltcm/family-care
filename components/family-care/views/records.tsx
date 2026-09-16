@@ -6,9 +6,16 @@ import type { Notify } from '@/components/family-care/types';
 import { emptyClinicalRecords, fetchClinicalRecords, type ClinicalRecords } from '@/lib/clinical-records';
 import type { FamilyCarePatient } from '@/lib/family-care-session';
 
-function displayDate(value: string | null, withTime = false) {
+function displayDate(value: string | null | undefined, withTime = false) {
   if (!value) return 'No registrada';
-  return new Intl.DateTimeFormat('es-PA', { dateStyle: 'medium', ...(withTime ? { timeStyle: 'short' as const } : {}), timeZone: 'America/Panama' }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Fecha no disponible';
+  return new Intl.DateTimeFormat('es-PA', { dateStyle: 'medium', ...(withTime ? { timeStyle: 'short' as const } : {}), timeZone: 'America/Panama' }).format(date);
+}
+
+function timestamp(value: string | null | undefined) {
+  const parsed = Date.parse(value || '');
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 const encounterLabels: Record<string, string> = { consultation: 'Consulta', emergency: 'Urgencia', hospitalization: 'Hospitalización', procedure: 'Procedimiento', therapy: 'Terapia', other: 'Otra atención' };
@@ -31,7 +38,7 @@ export function Records({ profile, patient, onNotice, onShare, onEdit, onRegiste
   const timeline = useMemo(() => [
     ...records.encounters.map((entry) => ({ id: `encounter-${entry.id}`, at: entry.occurredAt, kind: entry.encounterType === 'hospitalization' ? 'hospitalization' : 'consultation', title: entry.reason, meta: [entry.specialty, entry.practitionerName, entry.facilityName].filter(Boolean).join(' · ') || encounterLabels[entry.encounterType], copy: entry.summary || 'Sin resumen adicional.', tag: encounterLabels[entry.encounterType] || 'Atención' })),
     ...records.labReports.map((report) => ({ id: `lab-${report.id}`, at: report.collectedAt, kind: 'lab', title: report.panelName, meta: [report.laboratoryName, `${report.results.length} resultados`].filter(Boolean).join(' · '), copy: report.results.slice(0, 4).map((result) => `${result.analyteName}: ${result.valueNumeric ?? result.valueText} ${result.unit || ''}`.trim()).join(' · '), tag: 'Laboratorio' })),
-  ].filter((entry) => filter === 'all' || entry.kind === filter).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)), [records, filter]);
+  ].filter((entry) => filter === 'all' || entry.kind === filter).sort((a, b) => timestamp(b.at) - timestamp(a.at)), [records, filter]);
 
   const share = () => canShare ? onShare() : onNotice('Este perfil no tiene habilitados los enlaces médicos.', 'warning');
   const edit = () => canEdit ? onEdit() : onNotice('Selecciona un perfil protegido con permiso de edición.', 'warning');
