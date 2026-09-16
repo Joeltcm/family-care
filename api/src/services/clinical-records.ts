@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import type { CallerIdentity } from '../auth.js';
+import { config } from '../config.js';
 import { database } from '../database.js';
 
 type AccessRow = {
@@ -61,6 +62,110 @@ export type DocumentInput = {
 
 export class ClinicalRecordPermissionError extends Error {}
 export class ClinicalRecordNotFoundError extends Error {}
+export class HemogramExtractionUnavailableError extends Error {}
+export class HemogramExtractionError extends Error {}
+
+export type HemogramExtractionInput = {
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  base64: string;
+};
+
+const hemogramFields = [
+  { code: 'HGB', name: 'Hemoglobina' },
+  { code: 'HCT', name: 'Hematocrito' },
+  { code: 'RBC', name: 'Eritrocitos' },
+  { code: 'WBC', name: 'Leucocitos' },
+  { code: 'PLT', name: 'Plaquetas' },
+  { code: 'RETIC', name: 'Reticulocitos' },
+  { code: 'LDH', name: 'LDH' },
+  { code: 'BILI', name: 'Bilirrubina' },
+  { code: 'HAPTO', name: 'Haptoglobina' },
+] as const;
+
+type HemogramCode = typeof hemogramFields[number]['code'];
+type ExtractedHemogramValue = {
+  code: HemogramCode;
+  value: number | null;
+  unit: string | null;
+  referenceLow: number | null;
+  referenceHigh: number | null;
+  confidence: number;
+};
+
+function numeric(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(String(value ?? '').replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function jsonFromModel(value: string) {
+  const trimmed = value.trim().replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new HemogramExtractionError('ai_invalid_response');
+  try { return JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>; }
+  catch { throw new HemogramExtractionError('ai_invalid_response'); }
+}
+
+export async function extractHemogramFromImage(identity: CallerIdentity, patientId: string, input: HemogramExtractionInput) {
+  if (!config.DEEPSEEK_ENABLED || !config.DEEPSEEK_API_KEY) {
+    throw new HemogramExtractionUnavailableError('ai_extraction_not_configured');
+  }
+  if (!database) throw new Error('database_not_configured');
+  const source = Buffer.from(input.base64, 'base64');
+  if (!source.length || source.length > 4 * 1024 * 1024) throw new HemogramExtractionError('ai_image_invalid');
+
+  const client = await database.connect();
+  try {
+    const access = await accessForPatient(client, identity, patientId);
+    if (!mayWrite(access)) throw new ClinicalRecordPermissionError('clinical_records_write_not_allowed');
+  } finally {
+    client.release();
+  }
+
+  const requestedFields = hemogramFields.map((field) => field.code).join(', ');
+  const response = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${config.DEEPSEEK_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'deepseek-flash',
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: `Transcribe only the visible laboratory data from this hemogram. Do not diagnose, infer missing values, or modify units. Return JSON only: {"collectedAt":"YYYY-MM-DD or null","laboratoryName":"string or null","results":[{"code":"one of ${requestedFields}","value":number or null,"unit":"string or null","referenceLow":number or null,"referenceHigh":number or null,"confidence":number 0..1}]}. Include only clearly visible values.` },
+          { type: 'image_url', image_url: { url: `data:${input.mimeType};base64,${input.base64}`, detail: 'original' } },
+        ],
+      }],
+    }),
+    signal: AbortSignal.timeout(45_000),
+  });
+  if (!response.ok) throw new HemogramExtractionError('ai_request_failed');
+  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const model = payload.choices?.[0]?.message?.content;
+  if (!model) throw new HemogramExtractionError('ai_empty_response');
+  const parsed = jsonFromModel(model);
+  const allowedCodes = new Set<string>(hemogramFields.map((field) => field.code));
+  const results = Array.isArray(parsed.results) ? parsed.results.flatMap((candidate): ExtractedHemogramValue[] => {
+    if (!candidate || typeof candidate !== 'object') return [];
+    const row = candidate as Record<string, unknown>;
+    const code = String(row.code || '').toUpperCase();
+    const value = numeric(row.value);
+    if (!allowedCodes.has(code) || value === null) return [];
+    const confidence = numeric(row.confidence);
+    return [{
+      code: code as HemogramCode,
+      value,
+      unit: typeof row.unit === 'string' && row.unit.trim() ? row.unit.trim().slice(0, 40) : null,
+      referenceLow: numeric(row.referenceLow),
+      referenceHigh: numeric(row.referenceHigh),
+      confidence: confidence === null ? 0.5 : Math.max(0, Math.min(1, confidence)),
+    }];
+  }) : [];
+  const collectedAt = typeof parsed.collectedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.collectedAt) ? parsed.collectedAt : null;
+  const laboratoryName = typeof parsed.laboratoryName === 'string' && parsed.laboratoryName.trim() ? parsed.laboratoryName.trim().slice(0, 180) : null;
+  return { collectedAt, laboratoryName, results, requiresReview: true };
+}
 
 async function accessForPatient(client: PoolClient, identity: CallerIdentity, patientId: string, lock = false) {
   const result = await client.query<AccessRow>(

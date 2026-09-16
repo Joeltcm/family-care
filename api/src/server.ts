@@ -13,8 +13,11 @@ import {
   createDocument,
   createEncounter,
   createLabReport,
+  extractHemogramFromImage,
   getClinicalRecords,
   getDocumentVersion,
+  HemogramExtractionError,
+  HemogramExtractionUnavailableError,
 } from './services/clinical-records.js';
 import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
 import {
@@ -250,6 +253,11 @@ const patientProfileSchema = z.object({
 
 const optionalText = (maximum: number) => z.string().trim().max(maximum).nullable();
 const isoDateTime = z.string().datetime({ offset: true });
+
+const hemogramExtractionSchema = z.object({
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  base64: z.string().min(100).max(5_600_000).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+}).strict();
 
 const encounterSchema = z.object({
   occurredAt: isoDateTime,
@@ -672,6 +680,22 @@ app.post('/v1/patients/:patientId/lab-reports', { config: { rateLimit: { max: 60
   } catch (error) {
     if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
     if (error instanceof ClinicalRecordNotFoundError) return reply.code(404).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.post('/v1/patients/:patientId/hemogram-extraction', { bodyLimit: 6 * 1024 * 1024, config: { rateLimit: { max: 15, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ patientId: z.string().uuid() }).safeParse(request.params);
+  const body = hemogramExtractionSchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_hemogram_extraction' });
+  try {
+    return await extractHemogramFromImage(identity, params.data.patientId, body.data);
+  } catch (error) {
+    if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof HemogramExtractionUnavailableError) return reply.code(503).send({ error: error.message });
+    if (error instanceof HemogramExtractionError) return reply.code(422).send({ error: error.message });
     throw error;
   }
 });
