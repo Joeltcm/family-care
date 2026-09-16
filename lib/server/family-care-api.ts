@@ -10,6 +10,13 @@ export const FAMILY_CARE_SESSION_COOKIE = 'family_care_session';
 
 const accessKeySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
+function encodeBridgeIdentity(identity: FamilyCareIdentity) {
+  const bytes = new TextEncoder().encode(JSON.stringify(identity));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
 function decodeDisplayName(request: Request, fallback: string) {
   const encoded = request.headers.get('oai-authenticated-user-full-name');
   const encoding = request.headers.get('oai-authenticated-user-full-name-encoding');
@@ -145,6 +152,9 @@ export async function callFamilyCareApi(request: Request, path: string, init: Re
   const headers = new Headers(init.headers);
   headers.set('accept', 'application/json');
   headers.set('x-family-care-service-key', serviceKey);
+  headers.set('x-family-care-identity', encodeBridgeIdentity(identity));
+  // Keep the legacy fields during the transition so older API deployments
+  // remain compatible while the packed identity becomes authoritative.
   headers.set('x-family-care-user-id', identity.subject);
   headers.set('x-family-care-user-email', identity.email);
   headers.set('x-family-care-user-name', identity.displayName);

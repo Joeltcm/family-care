@@ -27,6 +27,16 @@ function matchesServiceKey(candidate: string | undefined) {
     });
 }
 
+function packedIdentity(request: FastifyRequest) {
+  const packed = header(request, 'x-family-care-identity');
+  if (!packed || packed.length > 1_024 || !/^[A-Za-z0-9_-]+$/.test(packed)) return null;
+  try {
+    return JSON.parse(Buffer.from(packed, 'base64url').toString('utf8')) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 export function requireServiceBridge(request: FastifyRequest, reply: FastifyReply) {
   if (!config.FAMILY_CARE_SERVICE_KEY && !config.FAMILY_CARE_CLOUDFLARE_SERVICE_KEY) {
     reply.code(503).send({ error: 'identity_bridge_not_configured' });
@@ -43,11 +53,12 @@ export function requireCallerIdentity(request: FastifyRequest, reply: FastifyRep
   if (!requireServiceBridge(request, reply)) return null;
 
   const email = header(request, 'x-family-care-user-email');
-  const parsed = identitySchema.safeParse({
+  const legacyIdentity = {
     subject: header(request, 'x-family-care-user-id'),
     email,
     displayName: header(request, 'x-family-care-user-name') || email?.split('@')[0],
-  });
+  };
+  const parsed = identitySchema.safeParse(packedIdentity(request) || legacyIdentity);
 
   if (!parsed.success) {
     reply.code(401).send({ error: 'invalid_identity' });
