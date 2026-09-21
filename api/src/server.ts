@@ -287,31 +287,30 @@ const encounterSchema = z.object({
   }
 });
 
-const labResultSchema = z.object({
-  analyteName: z.string().trim().min(1).max(120),
-  analyteCode: optionalText(40),
+const editableLabResultFields = {
   valueNumeric: z.number().finite().min(-1_000_000).max(1_000_000).nullable(),
   valueText: optionalText(160),
   unit: optionalText(40),
   referenceLow: z.number().finite().min(-1_000_000).max(1_000_000).nullable(),
   referenceHigh: z.number().finite().min(-1_000_000).max(1_000_000).nullable(),
-}).strict().superRefine((value, context) => {
+};
+
+const validateLabResult = (value: { valueNumeric: number | null; valueText: string | null; referenceLow: number | null; referenceHigh: number | null }, context: z.RefinementCtx) => {
   if (value.valueNumeric === null && !value.valueText) {
     context.addIssue({ code: 'custom', message: 'result_value_required', path: ['valueNumeric'] });
   }
   if (value.referenceLow !== null && value.referenceHigh !== null && value.referenceLow > value.referenceHigh) {
     context.addIssue({ code: 'custom', message: 'invalid_reference_range', path: ['referenceHigh'] });
   }
-});
+};
 
-const editableLabResultSchema = labResultSchema.pick({
-  valueNumeric: true, valueText: true, unit: true, referenceLow: true, referenceHigh: true,
-}).superRefine((value, context) => {
-  if (value.valueNumeric === null && !value.valueText) context.addIssue({ code: 'custom', message: 'result_value_required', path: ['valueNumeric'] });
-  if (value.referenceLow !== null && value.referenceHigh !== null && value.referenceLow > value.referenceHigh) {
-    context.addIssue({ code: 'custom', message: 'invalid_reference_range', path: ['referenceHigh'] });
-  }
-});
+const labResultSchema = z.object({
+  analyteName: z.string().trim().min(1).max(120),
+  analyteCode: optionalText(40),
+  ...editableLabResultFields,
+}).strict().superRefine(validateLabResult);
+
+const editableLabResultSchema = z.object(editableLabResultFields).strict().superRefine(validateLabResult);
 
 const labReportSchema = z.object({
   collectedAt: isoDateTime,

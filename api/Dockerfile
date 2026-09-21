@@ -5,7 +5,9 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 COPY db ./db
+COPY scripts ./scripts
 RUN npm run build
+RUN npm run check:startup
 
 FROM node:24-alpine AS runtime
 WORKDIR /app
