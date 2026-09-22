@@ -278,7 +278,7 @@ export async function getClinicalRecords(identity: CallerIdentity, patientId: st
         `SELECT r.id, r.report_id, r.analyte_name, r.analyte_code, r.value_numeric,
                 r.value_text, r.unit, r.reference_low, r.reference_high, r.abnormal_flag,
                 EXISTS (SELECT 1 FROM audit_events a
-                         WHERE a.resource_type = 'lab_result' AND a.resource_id = r.id
+                         WHERE a.resource_type = 'lab_result' AND a.resource_id = r.id::text
                            AND a.action = 'lab_result.corrected') AS corrected_by_family
            FROM lab_results r
            JOIN lab_reports lr ON lr.id = r.report_id
