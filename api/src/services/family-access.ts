@@ -42,14 +42,20 @@ async function context(identity: CallerIdentity) {
 export async function getFamilyAccess(identity: CallerIdentity) {
   const access = await context(identity);
   if (access.role !== 'owner') throw new FamilyAccessPermissionError('family_access_manage_denied');
-  const members = await database!.query<{ id: string; email: string; display_name: string; role: string; can_view_all: boolean; can_manage_emergency: boolean; is_supervised: boolean; linked_patient_id: string | null; patient_ids: string[] }>(
+  const members = await database!.query<{ id: string; email: string; display_name: string; role: string; can_view_all: boolean; can_manage_emergency: boolean; is_supervised: boolean; linked_patient_id: string | null; patient_ids: string[]; needs_access_review: boolean }>(
     `SELECT u.id, u.email, u.display_name, fm.role::text, fm.can_view_all, fm.can_manage_emergency,
             COALESCE(ac.is_supervised, false) AS is_supervised,
             (SELECT p.id FROM patients p WHERE p.family_id = fm.family_id AND p.linked_user_id = u.id
               ORDER BY p.created_at LIMIT 1) AS linked_patient_id,
             COALESCE((SELECT array_agg(pp.patient_id) FROM patient_permissions pp
               JOIN patients p ON p.id = pp.patient_id
-              WHERE pp.user_id = u.id AND p.family_id = fm.family_id AND pp.can_read), '{}'::uuid[]) AS patient_ids
+              WHERE pp.user_id = u.id AND p.family_id = fm.family_id AND pp.can_read), '{}'::uuid[]) AS patient_ids,
+            (fm.role <> 'owner' AND NOT fm.can_view_all AND EXISTS (
+              SELECT 1 FROM patient_permissions pp
+              JOIN patients p ON p.id = pp.patient_id
+              WHERE pp.user_id = u.id AND p.family_id = fm.family_id AND pp.can_read
+                AND pp.granted_by = u.id AND p.linked_user_id IS DISTINCT FROM u.id
+            )) AS needs_access_review
        FROM family_memberships fm JOIN app_users u ON u.id = fm.user_id
        LEFT JOIN auth_credentials ac ON ac.user_id = u.id
       WHERE fm.family_id = $1 ORDER BY fm.created_at`, [access.family_id],
@@ -65,7 +71,7 @@ export async function getFamilyAccess(identity: CallerIdentity) {
   );
   return {
     canManage: true,
-    members: members.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name, role: row.role, canViewAll: row.is_supervised ? false : row.can_view_all, canManageEmergency: row.is_supervised ? false : row.can_manage_emergency, isSupervised: row.is_supervised, linkedPatientId: row.linked_patient_id, patientIds: row.is_supervised ? (row.linked_patient_id ? [row.linked_patient_id] : []) : [...new Set([...row.patient_ids, ...(row.linked_patient_id ? [row.linked_patient_id] : [])])] })),
+    members: members.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name, role: row.role, canViewAll: row.is_supervised ? false : row.can_view_all, canManageEmergency: row.is_supervised ? false : row.can_manage_emergency, isSupervised: row.is_supervised, needsAccessReview: !row.is_supervised && row.needs_access_review, linkedPatientId: row.linked_patient_id, patientIds: row.is_supervised ? (row.linked_patient_id ? [row.linked_patient_id] : []) : [...new Set([...row.patient_ids, ...(row.linked_patient_id ? [row.linked_patient_id] : [])])] })),
     invitations: invitations.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name, role: row.role, canViewAll: row.can_view_all, canManageEmergency: row.can_manage_emergency, status: row.status, expiresAt: row.expires_at, patientIds: row.patient_ids, isMinor: row.is_minor, linkedPatientId: row.linked_patient_id })),
   };
 }
@@ -112,10 +118,11 @@ export async function updateMemberVisibility(identity: CallerIdentity, memberId:
         `UPDATE patient_permissions pp
             SET can_read = pp.patient_id = ANY($3::uuid[]),
                 can_write = CASE WHEN pp.patient_id = ANY($3::uuid[]) AND NOT $4::boolean THEN pp.can_write ELSE false END,
-                can_share = CASE WHEN pp.patient_id = ANY($3::uuid[]) AND NOT $4::boolean THEN pp.can_share ELSE false END
+                can_share = CASE WHEN pp.patient_id = ANY($3::uuid[]) AND NOT $4::boolean THEN pp.can_share ELSE false END,
+                granted_by = CASE WHEN pp.patient_id = ANY($3::uuid[]) THEN $5::uuid ELSE pp.granted_by END
            FROM patients p
           WHERE p.id = pp.patient_id AND p.family_id = $1 AND pp.user_id = $2`,
-        [access.family_id, memberId, allowed, member.is_supervised],
+        [access.family_id, memberId, allowed, member.is_supervised, access.user_id],
       );
       await client.query(
         `INSERT INTO patient_permissions (patient_id, user_id, can_read, can_write, can_share, granted_by)

@@ -474,6 +474,7 @@ button { color: inherit; }
 .access-people > div { display: flex; align-items: center; gap: 10px; border: 1px solid #e3ecea; border-radius: 12px; padding: 10px 12px; }
 .access-people > div > span:nth-child(2) { display: grid; flex: 1; gap: 3px; color: #3d5962; font-size: 14px; }
 .access-people small { color: #607980; font-size: 12px; overflow-wrap: anywhere; }
+.access-people .access-review-warning { color: #9a551f; font-weight: 700; }
 .access-people b { border-radius: 999px; padding: 5px 8px; background: #e8f5ef; color: #397b66; font-size: 7px; }
 .activation-link-button { border: 0; border-radius: 9px; padding: 9px 11px; background: #edf7f4; color: var(--teal); font-size: 13px; font-weight: 800; cursor: pointer; }
 .access-people .pending-label { background: #fff3da; color: #9a6a16; }

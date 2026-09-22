@@ -3,7 +3,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import type { FamilyCarePatient } from '@/lib/family-care-session';
 
-type Member = { id: string; email: string; displayName: string; role: string; canViewAll: boolean; isSupervised: boolean; linkedPatientId: string | null; patientIds: string[] };
+type Member = { id: string; email: string; displayName: string; role: string; canViewAll: boolean; isSupervised: boolean; needsAccessReview: boolean; linkedPatientId: string | null; patientIds: string[] };
 type Invitation = { id: string; email: string; displayName: string; role: string; status: string; expiresAt: string; patientIds: string[]; isMinor: boolean; linkedPatientId: string | null };
 type AccessData = { members: Member[]; invitations: Invitation[] };
 type InviteResult = { activationToken: string; activationExpiresAt: string };
@@ -119,7 +119,8 @@ export function FamilyAccessModal({ patients, onClose, onSaved }: { patients: Fa
   function accessLabel(member: Member) {
     if (member.canViewAll) return 'Todos los perfiles';
     if (member.linkedPatientId && member.patientIds.length === 1 && member.patientIds[0] === member.linkedPatientId) return 'Solo su perfil';
-    return `${member.patientIds.length} perfiles permitidos`;
+    const names = member.patientIds.map((id) => patients.find((patient) => patient.id === id)?.preferredName || patients.find((patient) => patient.id === id)?.legalName || 'Perfil sin nombre');
+    return names.length ? `Puede ver: ${names.join(', ')}` : 'Sin perfiles permitidos';
   }
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><section className="profile-modal family-access-modal" role="dialog" aria-modal="true" aria-labelledby="family-access-title" onMouseDown={(event) => event.stopPropagation()}><button className="close-modal" type="button" onClick={onClose} aria-label="Cerrar">×</button><div className="profile-modal-heading"><span>♙</span><div><p className="eyebrow">ACCESO FAMILIAR</p><h2 id="family-access-title">Personas y permisos</h2></div></div><p className="profile-intro">Cada persona entra con su correo y contraseña. Tú decides qué expedientes puede consultar o editar.</p>
@@ -132,11 +133,12 @@ export function FamilyAccessModal({ patients, onClose, onSaved }: { patients: Fa
         {editingMember.linkedPatientId && <label><input type="radio" name="memberScope" checked={memberScope === 'own'} onChange={() => setMemberScope('own')} />Solo su perfil</label>}
       </fieldset>
       {memberScope === 'selected' && <fieldset className="patient-access"><legend>Perfiles seleccionados</legend>{patients.map((patient) => <label key={patient.id}><input type="checkbox" checked={memberSelected.includes(patient.id)} disabled={patient.id === editingMember.linkedPatientId} onChange={() => setMemberSelected((current) => current.includes(patient.id) ? current.filter((id) => id !== patient.id) : [...current, patient.id])} />{patient.preferredName || patient.legalName}{patient.id === editingMember.linkedPatientId ? ' · perfil personal' : ''}</label>)}</fieldset>}
+      {editingMember.needsAccessReview && <div className="data-caution"><strong>Revisa el acceso anterior</strong><span>Esta cuenta conserva acceso a otro expediente concedido antes de la configuración actual. Confirma los perfiles permitidos y guarda los cambios.</span></div>}
       {editingMember.isSupervised && <div className="data-caution"><strong>Cuenta supervisada</strong><span>Su acceso permanece limitado a su perfil personal, en modo consulta.</span></div>}
       {error && <p className="share-error" role="alert">{error}</p>}
       <div className="profile-modal-actions"><button type="button" disabled={saving} onClick={() => { setEditingMember(null); setError(''); }}>Cancelar</button><button className="primary-action" type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar permisos'}</button></div>
     </form> : !formOpen ? <>
-      <div className="access-people"><p className="eyebrow">INTEGRANTES ACTIVOS</p>{data?.members.map((member) => <div key={member.id}><span className="access-avatar">{member.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{member.displayName}</strong><small>{member.email} · {roleNames[member.role] || member.role}{member.isSupervised ? ' · Cuenta supervisada' : ''}</small><small>{accessLabel(member)}</small></span>{member.role === 'owner' ? <b>Administrador</b> : <button className="activation-link-button" type="button" onClick={() => startMemberEdit(member)}>Editar acceso</button>}</div>)}</div>
+      <div className="access-people"><p className="eyebrow">INTEGRANTES ACTIVOS</p>{data?.members.map((member) => <div key={member.id}><span className="access-avatar">{member.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{member.displayName}</strong><small>{member.email} · {roleNames[member.role] || member.role}{member.isSupervised ? ' · Cuenta supervisada' : ''}</small><small>{accessLabel(member)}</small>{member.needsAccessReview && <small className="access-review-warning">Acceso anterior por revisar</small>}</span>{member.role === 'owner' ? <b>Administrador</b> : <button className="activation-link-button" type="button" onClick={() => startMemberEdit(member)}>Editar acceso</button>}</div>)}</div>
       <div className="access-people"><p className="eyebrow">INVITACIONES</p>{data?.invitations.length ? data.invitations.map((invitation) => <div key={invitation.id}><span className="access-avatar pending">{invitation.displayName.slice(0, 2).toUpperCase()}</span><span><strong>{invitation.displayName}</strong><small>{invitation.email} · {roleNames[invitation.role]}{invitation.isMinor ? ' · Menor supervisada' : ''}</small></span>{invitation.status === 'pending' ? <button className="activation-link-button" disabled={saving} type="button" onClick={() => regenerate(invitation)}>Copiar enlace</button> : <b className="pending-label">{invitation.status}</b>}</div>) : <p className="muted-copy">No hay invitaciones pendientes.</p>}</div>
       {activationUrl && <div className="activation-result"><strong>Enlace listo</strong><span>Vence en 48 horas y solo se puede usar una vez.</span><button type="button" onClick={() => copyUrl(activationUrl)}>Copiar nuevamente</button></div>}
       {error && <p className="share-error" role="alert">{error}</p>}
