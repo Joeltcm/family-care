@@ -65,7 +65,7 @@ export async function getFamilyAccess(identity: CallerIdentity) {
   );
   return {
     canManage: true,
-    members: members.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name, role: row.role, canViewAll: row.can_view_all, canManageEmergency: row.can_manage_emergency, isSupervised: row.is_supervised, linkedPatientId: row.linked_patient_id, patientIds: [...new Set([...row.patient_ids, ...(row.linked_patient_id ? [row.linked_patient_id] : [])])] })),
+    members: members.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name, role: row.role, canViewAll: row.is_supervised ? false : row.can_view_all, canManageEmergency: row.is_supervised ? false : row.can_manage_emergency, isSupervised: row.is_supervised, linkedPatientId: row.linked_patient_id, patientIds: row.is_supervised ? (row.linked_patient_id ? [row.linked_patient_id] : []) : [...new Set([...row.patient_ids, ...(row.linked_patient_id ? [row.linked_patient_id] : [])])] })),
     invitations: invitations.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name, role: row.role, canViewAll: row.can_view_all, canManageEmergency: row.can_manage_emergency, status: row.status, expiresAt: row.expires_at, patientIds: row.patient_ids, isMinor: row.is_minor, linkedPatientId: row.linked_patient_id })),
   };
 }

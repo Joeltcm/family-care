@@ -149,13 +149,15 @@ async function dueReminders() {
        FROM push_subscriptions ps
        JOIN app_users u ON u.id = ps.user_id
        JOIN family_memberships fm ON fm.user_id = u.id
+       LEFT JOIN auth_credentials ac ON ac.user_id = u.id
        JOIN appointments a ON a.patient_id IN (SELECT id FROM patients WHERE family_id = fm.family_id)
        JOIN patients p ON p.id = a.patient_id
        LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = u.id
        CROSS JOIN LATERAL unnest(a.reminder_minutes) AS reminder(value)
       WHERE ps.disabled_at IS NULL
         AND a.status = 'scheduled'
-        AND (fm.can_view_all OR p.linked_user_id = u.id OR COALESCE(pp.can_read, false))
+        AND (CASE WHEN COALESCE(ac.is_supervised, false) THEN p.linked_user_id = u.id
+                  ELSE fm.can_view_all OR p.linked_user_id = u.id OR COALESCE(pp.can_read, false) END)
         AND a.starts_at - (reminder.value * interval '1 minute') BETWEEN now() - interval '10 minutes' AND now() + interval '1 minute'`,
   );
   const medications = await database.query<DueReminder>(
@@ -166,6 +168,7 @@ async function dueReminders() {
        FROM push_subscriptions ps
        JOIN app_users u ON u.id = ps.user_id
        JOIN family_memberships fm ON fm.user_id = u.id
+       LEFT JOIN auth_credentials ac ON ac.user_id = u.id
        JOIN patients p ON p.family_id = fm.family_id
        LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = u.id
        JOIN medications m ON m.patient_id = p.id
@@ -174,7 +177,8 @@ async function dueReminders() {
         AND m.active AND ms.reminders_enabled
         AND m.start_date <= (now() AT TIME ZONE u.timezone)::date
         AND (m.end_date IS NULL OR m.end_date >= (now() AT TIME ZONE u.timezone)::date)
-        AND (fm.can_view_all OR p.linked_user_id = u.id OR COALESCE(pp.can_read, false))
+        AND (CASE WHEN COALESCE(ac.is_supervised, false) THEN p.linked_user_id = u.id
+                  ELSE fm.can_view_all OR p.linked_user_id = u.id OR COALESCE(pp.can_read, false) END)
         AND (((now() AT TIME ZONE u.timezone)::date + ms.local_time) AT TIME ZONE u.timezone)
             BETWEEN now() - interval '10 minutes' AND now() + interval '1 minute'`,
   );

@@ -224,7 +224,7 @@ export async function bootstrapSession(identity: CallerIdentity) {
         `INSERT INTO patients (family_id, linked_user_id, legal_name, preferred_name)
          VALUES ($1, $2, $3, $3)
          RETURNING id`,
-        [family.id, user.id, config.FAMILY_CARE_OWNER_LEGAL_NAME || identity.displayName],
+        [family.id, user.id, family.role === 'owner' ? config.FAMILY_CARE_OWNER_LEGAL_NAME || identity.displayName : identity.displayName],
       );
       await client.query(
         `INSERT INTO patient_permissions
@@ -236,21 +236,25 @@ export async function bootstrapSession(identity: CallerIdentity) {
       created = true;
     }
 
-    await client.query(
-      `UPDATE patients
-          SET legal_name = CASE WHEN private_config_applied_at IS NULL AND $3::text IS NOT NULL THEN $3 ELSE legal_name END,
-              preferred_name = CASE WHEN private_config_applied_at IS NULL AND $3::text IS NOT NULL THEN $3 ELSE preferred_name END,
-              relationship_to_owner = 'self',
-              private_config_applied_at = COALESCE(private_config_applied_at, now()),
-              updated_at = now()
-        WHERE family_id = $1 AND linked_user_id = $2`,
-      [family.id, user.id, config.FAMILY_CARE_OWNER_LEGAL_NAME || null],
-    );
-    if (config.FAMILY_CARE_SPOUSE_LEGAL_NAME) {
-      await ensureConfiguredPatient(client, family.id, user.id, config.FAMILY_CARE_SPOUSE_LEGAL_NAME, 'spouse');
-    }
-    if (config.FAMILY_CARE_CHILD_LEGAL_NAME) {
-      await ensureConfiguredPatient(client, family.id, user.id, config.FAMILY_CARE_CHILD_LEGAL_NAME, 'child');
+    // Private bootstrap names and grants belong to the family owner only. Applying
+    // them for invited members re-granted access at every sign-in.
+    if (family.role === 'owner') {
+      await client.query(
+        `UPDATE patients
+            SET legal_name = CASE WHEN private_config_applied_at IS NULL AND $3::text IS NOT NULL THEN $3 ELSE legal_name END,
+                preferred_name = CASE WHEN private_config_applied_at IS NULL AND $3::text IS NOT NULL THEN $3 ELSE preferred_name END,
+                relationship_to_owner = 'self',
+                private_config_applied_at = COALESCE(private_config_applied_at, now()),
+                updated_at = now()
+          WHERE family_id = $1 AND linked_user_id = $2`,
+        [family.id, user.id, config.FAMILY_CARE_OWNER_LEGAL_NAME || null],
+      );
+      if (config.FAMILY_CARE_SPOUSE_LEGAL_NAME) {
+        await ensureConfiguredPatient(client, family.id, user.id, config.FAMILY_CARE_SPOUSE_LEGAL_NAME, 'spouse');
+      }
+      if (config.FAMILY_CARE_CHILD_LEGAL_NAME) {
+        await ensureConfiguredPatient(client, family.id, user.id, config.FAMILY_CARE_CHILD_LEGAL_NAME, 'child');
+      }
     }
 
     const credential = await client.query<{ is_supervised: boolean }>(
@@ -258,6 +262,28 @@ export async function bootstrapSession(identity: CallerIdentity) {
       [user.id],
     );
     const supervised = credential.rows[0]?.is_supervised ?? false;
+    if (supervised) {
+      await client.query(
+        'UPDATE family_memberships SET can_view_all = false, can_manage_emergency = false WHERE family_id = $1 AND user_id = $2 AND (can_view_all OR can_manage_emergency)',
+        [family.id, user.id],
+      );
+      await client.query(
+        `UPDATE patient_permissions pp
+            SET can_read = p.linked_user_id = $2,
+                can_write = false,
+                can_share = false
+           FROM patients p
+          WHERE pp.patient_id = p.id AND pp.user_id = $2 AND p.family_id = $1
+            AND (pp.can_read IS DISTINCT FROM (p.linked_user_id = $2) OR pp.can_write OR pp.can_share)`,
+        [family.id, user.id],
+      );
+      await client.query(
+        `UPDATE medical_record_shares s SET revoked_at = now()
+           FROM patients p
+          WHERE s.patient_id = p.id AND p.family_id = $1 AND s.created_by = $2 AND s.revoked_at IS NULL`,
+        [family.id, user.id],
+      );
+    }
     const patients = await client.query<PatientRow>(
       `SELECT p.id, p.legal_name, p.preferred_name, to_char(p.birth_date, 'YYYY-MM-DD') AS birth_date, p.blood_type,
               p.emergency_summary, p.allergies_summary, p.relationship_to_owner, p.linked_user_id,
@@ -267,7 +293,8 @@ export async function bootstrapSession(identity: CallerIdentity) {
          JOIN family_memberships fm ON fm.family_id = p.family_id AND fm.user_id = $2
          LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
         WHERE p.family_id = $1
-          AND (fm.can_view_all OR p.linked_user_id = $2 OR pp.can_read)
+          AND (CASE WHEN $3::boolean THEN p.linked_user_id = $2
+                    ELSE fm.can_view_all OR p.linked_user_id = $2 OR COALESCE(pp.can_read, false) END)
         ORDER BY CASE p.relationship_to_owner WHEN 'self' THEN 0 WHEN 'spouse' THEN 1 WHEN 'child' THEN 2 ELSE 3 END,
                  p.created_at`,
       [family.id, user.id, supervised],

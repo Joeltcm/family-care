@@ -49,10 +49,15 @@ export function FamilyCareApp() {
   const [clinicalRevision, setClinicalRevision] = useState(0);
   const [careRevision, setCareRevision] = useState(0);
   const [notice, setNotice] = useState<Notice>(null);
+  // A supervised account must never render another person's details, even if
+  // an upstream session response accidentally includes an extra patient.
+  const visiblePatients = session?.user.supervised
+    ? session.patients.filter((patient) => patient.linkedToCurrentUser).slice(0, 1)
+    : session?.patients || [];
   const availableProfiles = session
     ? [
         ...(!session.user.supervised ? [{ id: 'familia', name: 'Familia', initials: 'FC', color: '#0b6f69' }] : []),
-        ...session.patients.map((patient, index) => ({
+        ...visiblePatients.map((patient, index) => ({
           id: patient.id,
           name: patient.preferredName || patient.legalName,
           initials: initials(patient.preferredName || patient.legalName),
@@ -61,8 +66,8 @@ export function FamilyCareApp() {
       ]
     : profiles;
   const selectedProfile = availableProfiles.find((profile) => profile.id === activeProfile) ?? availableProfiles[0];
-  const selectedPatient = session?.patients.find((patient) => patient.id === activeProfile);
-  const accountName = session?.patients.find((patient) => patient.linkedToCurrentUser)?.preferredName || session?.user.displayName || 'Diógenes Joel';
+  const selectedPatient = visiblePatients.find((patient) => patient.id === activeProfile);
+  const accountName = visiblePatients.find((patient) => patient.linkedToCurrentUser)?.preferredName || session?.user.displayName || 'Diógenes Joel';
   const accountSubtitle = session ? 'Cuenta familiar protegida' : 'Administrador familiar';
 
   useEffect(() => {
@@ -168,6 +173,9 @@ export function FamilyCareApp() {
   if (sessionLoading || !session) {
     return <div className="auth-loading"><Image src="/app-icon.png" alt="" width={64} height={64} priority /><strong>Abriendo tu espacio familiar…</strong></div>;
   }
+  if (session.user.supervised && !visiblePatients.length) {
+    return <div className="auth-loading"><Image src="/app-icon.png" alt="" width={64} height={64} priority /><strong>No hay un perfil personal vinculado a esta cuenta.</strong></div>;
+  }
 
   return (
     <div className="app-shell">
@@ -196,13 +204,13 @@ export function FamilyCareApp() {
         {!session.user.passwordAccessConfigured && <div className="password-access-wrap"><div className="password-access-banner"><div><strong>Activa el acceso directo con contraseña</strong><span>Entra desde Cloudflare con tu correo, sin depender de una cuenta de OpenAI.</span></div><button type="button" onClick={() => setPasswordSetupOpen(true)}>Crear contraseña</button></div></div>}
 
         <div className={!session.user.passwordAccessConfigured ? 'dashboard dashboard-after-banner' : 'dashboard'}>
-          {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} accountName={accountName} patients={session.patients} selectedPatient={selectedPatient} clinicalRevision={clinicalRevision} careRevision={careRevision} onNavigate={navigate} />}
+          {activeSection === 'inicio' && <Dashboard profile={selectedProfile.name} family={activeProfile === 'familia'} accountName={accountName} patients={visiblePatients} selectedPatient={selectedPatient} clinicalRevision={clinicalRevision} careRevision={careRevision} onNavigate={navigate} />}
           {activeSection === 'expedientes' && <Records profile={selectedProfile.name} patient={selectedPatient} onNotice={showNotice} canEdit={Boolean(selectedPatient?.canWrite)} canShare={Boolean(selectedPatient?.canShare)} onEdit={() => setProfileEditorOpen(true)} onShare={() => setShareOpen(true)} onRegister={() => setEncounterOpen(true)} revision={clinicalRevision} />}
           {activeSection === 'laboratorios' && <Laboratories profile={selectedProfile.name} patient={selectedPatient} canEdit={Boolean(selectedPatient?.canWrite)} canExport={Boolean(selectedPatient?.canWrite)} onRegister={() => setHemogramOpen(true)} onNotice={showNotice} revision={clinicalRevision} />}
-          {activeSection === 'medicamentos' && <Medications patients={session?.patients || []} patient={selectedPatient} onNotice={showNotice} onRegister={() => openCareModal('medication')} onChanged={refreshCare} revision={careRevision} />}
-          {activeSection === 'calendario' && <Calendar patients={session?.patients || []} patient={selectedPatient} onNotice={showNotice} onRegister={() => openCareModal('appointment')} onChanged={refreshCare} revision={careRevision} />}
+          {activeSection === 'medicamentos' && <Medications patients={visiblePatients} patient={selectedPatient} onNotice={showNotice} onRegister={() => openCareModal('medication')} onChanged={refreshCare} revision={careRevision} />}
+          {activeSection === 'calendario' && <Calendar patients={visiblePatients} patient={selectedPatient} onNotice={showNotice} onRegister={() => openCareModal('appointment')} onChanged={refreshCare} revision={careRevision} />}
           {activeSection === 'documentos' && <Documents patient={selectedPatient} canEdit={Boolean(selectedPatient?.canWrite)} onUpload={() => setDocumentOpen(true)} onNotice={showNotice} revision={clinicalRevision} />}
-          {activeSection === 'seguros' && <Insurance patients={session?.patients || []} onNotice={showNotice} />}
+          {activeSection === 'seguros' && <Insurance patients={visiblePatients} onNotice={showNotice} />}
         </div>
         <button className="sos-button" type="button" onClick={() => setSosOpen(true)} aria-label="Abrir alerta SOS familiar"><span>SOS</span><small>Emergencia</small></button>
         <nav className="mobile-nav" aria-label="Navegación móvil">{navigation.slice(0, 4).map((item) => <button key={item.id} type="button" className={activeSection === item.id ? 'active' : ''} onClick={() => navigate(item.id)}><span>{item.symbol}</span>{item.label}</button>)}</nav>
@@ -216,7 +224,7 @@ export function FamilyCareApp() {
       {documentOpen && selectedPatient && <DocumentUploadModal patient={selectedPatient} onSaved={clinicalSaved} onClose={() => setDocumentOpen(false)} />}
       {appointmentOpen && selectedPatient && <AppointmentModal patient={selectedPatient} onSaved={() => careSaved('Cita guardada. Activa las alertas para recibir recordatorios.')} onClose={() => setAppointmentOpen(false)} />}
       {medicationOpen && selectedPatient && <MedicationModal patient={selectedPatient} onSaved={() => careSaved('Medicamento y horarios guardados.')} onClose={() => setMedicationOpen(false)} />}
-      {familyAccessOpen && <FamilyAccessModal patients={session?.patients || []} onSaved={(message) => showNotice(message, 'info')} onClose={() => setFamilyAccessOpen(false)} />}
+      {familyAccessOpen && <FamilyAccessModal patients={visiblePatients} onSaved={(message) => showNotice(message, 'info')} onClose={() => setFamilyAccessOpen(false)} />}
       {passwordSetupOpen && <PasswordSetupModal onClose={() => setPasswordSetupOpen(false)} onConfigured={() => { setSession((current) => current ? { ...current, user: { ...current.user, passwordAccessConfigured: true } } : current); setPasswordSetupOpen(false); showNotice('Acceso con correo y contraseña activado.'); }} />}
     </div>
   );

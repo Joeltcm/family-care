@@ -232,7 +232,9 @@ async function accessForPatient(client: PoolClient, identity: CallerIdentity, pa
 }
 
 function mayRead(access: AccessRow | undefined) {
-  return Boolean(access && (access.can_view_all || access.linked_user_id === access.user_id || access.can_read));
+  return Boolean(access && (access.is_supervised
+    ? access.linked_user_id === access.user_id
+    : access.can_view_all || access.linked_user_id === access.user_id || access.can_read));
 }
 
 function mayWrite(access: AccessRow | undefined) {
@@ -610,6 +612,7 @@ export async function getDocumentVersion(identity: CallerIdentity, documentId: s
          JOIN patients p ON p.id = d.patient_id
          JOIN family_memberships fm ON fm.family_id = p.family_id
          JOIN app_users u ON u.id = fm.user_id
+         LEFT JOIN auth_credentials ac ON ac.user_id = u.id
          LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = u.id
          JOIN LATERAL (
            SELECT r2_object_key, content_type, size_bytes
@@ -620,7 +623,8 @@ export async function getDocumentVersion(identity: CallerIdentity, documentId: s
          ) dv ON true
         WHERE d.id = $1
           AND (u.auth_subject = $2 OR lower(u.email) = lower($3))
-          AND (fm.can_view_all OR p.linked_user_id = u.id OR pp.can_read)
+          AND (CASE WHEN COALESCE(ac.is_supervised, false) THEN p.linked_user_id = u.id
+                    ELSE fm.can_view_all OR p.linked_user_id = u.id OR COALESCE(pp.can_read, false) END)
         LIMIT 1`,
       [documentId, identity.subject, identity.email, variant],
     );

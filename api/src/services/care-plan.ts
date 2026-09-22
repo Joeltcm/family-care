@@ -56,7 +56,9 @@ async function accessForPatient(client: PoolClient, identity: CallerIdentity, pa
 }
 
 function mayRead(access: AccessRow | undefined) {
-  return Boolean(access && (access.can_view_all || access.linked_user_id === access.user_id || access.can_read));
+  return Boolean(access && (access.is_supervised
+    ? access.linked_user_id === access.user_id
+    : access.can_view_all || access.linked_user_id === access.user_id || access.can_read));
 }
 
 function mayWrite(access: AccessRow | undefined) {

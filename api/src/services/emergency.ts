@@ -80,7 +80,10 @@ export async function triggerEmergency(identity: CallerIdentity, input: {
     `SELECT 1 FROM patients p
        LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
        JOIN family_memberships fm ON fm.family_id = p.family_id AND fm.user_id = $2
-      WHERE p.id = $1 AND p.family_id = $3 AND (fm.can_view_all OR p.linked_user_id = $2 OR COALESCE(pp.can_read,false))`,
+       LEFT JOIN auth_credentials ac ON ac.user_id = $2
+      WHERE p.id = $1 AND p.family_id = $3
+        AND (CASE WHEN COALESCE(ac.is_supervised, false) THEN p.linked_user_id = $2
+                  ELSE fm.can_view_all OR p.linked_user_id = $2 OR COALESCE(pp.can_read,false) END)`,
     [input.patientId, access.user_id, access.family_id],
   );
   if (!allowed.rowCount) throw new EmergencyPermissionError('emergency_patient_denied');

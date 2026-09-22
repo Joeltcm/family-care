@@ -44,9 +44,11 @@ export async function createMedicalRecordShare(
       `SELECT p.id, p.family_id, p.legal_name, p.preferred_name
          FROM patients p
          JOIN family_memberships fm ON fm.family_id = p.family_id AND fm.user_id = $2
+         LEFT JOIN auth_credentials ac ON ac.user_id = $2
          LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
         WHERE p.id = $1
           AND fm.role NOT IN ('viewer', 'dependent')
+          AND NOT COALESCE(ac.is_supervised, false)
           AND COALESCE(pp.can_share, false)
         FOR UPDATE OF p`,
       [patientId, userId],
