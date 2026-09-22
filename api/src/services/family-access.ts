@@ -7,6 +7,7 @@ import { database } from '../database.js';
 type AccessContext = { user_id: string; family_id: string; role: string };
 
 export class FamilyAccessPermissionError extends Error {}
+export class FamilyAccessNotFoundError extends Error {}
 
 function tokenDigest(token: string) {
   return createHash('sha256').update(token).digest('hex');
@@ -41,9 +42,14 @@ async function context(identity: CallerIdentity) {
 export async function getFamilyAccess(identity: CallerIdentity) {
   const access = await context(identity);
   if (access.role !== 'owner') throw new FamilyAccessPermissionError('family_access_manage_denied');
-  const members = await database!.query<{ id: string; email: string; display_name: string; role: string; can_view_all: boolean; can_manage_emergency: boolean; is_supervised: boolean }>(
+  const members = await database!.query<{ id: string; email: string; display_name: string; role: string; can_view_all: boolean; can_manage_emergency: boolean; is_supervised: boolean; linked_patient_id: string | null; patient_ids: string[] }>(
     `SELECT u.id, u.email, u.display_name, fm.role::text, fm.can_view_all, fm.can_manage_emergency,
-            COALESCE(ac.is_supervised, false) AS is_supervised
+            COALESCE(ac.is_supervised, false) AS is_supervised,
+            (SELECT p.id FROM patients p WHERE p.family_id = fm.family_id AND p.linked_user_id = u.id
+              ORDER BY p.created_at LIMIT 1) AS linked_patient_id,
+            COALESCE((SELECT array_agg(pp.patient_id) FROM patient_permissions pp
+              JOIN patients p ON p.id = pp.patient_id
+              WHERE pp.user_id = u.id AND p.family_id = fm.family_id AND pp.can_read), '{}'::uuid[]) AS patient_ids
        FROM family_memberships fm JOIN app_users u ON u.id = fm.user_id
        LEFT JOIN auth_credentials ac ON ac.user_id = u.id
       WHERE fm.family_id = $1 ORDER BY fm.created_at`, [access.family_id],
@@ -59,9 +65,85 @@ export async function getFamilyAccess(identity: CallerIdentity) {
   );
   return {
     canManage: true,
-    members: members.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name, role: row.role, canViewAll: row.can_view_all, canManageEmergency: row.can_manage_emergency, isSupervised: row.is_supervised })),
+    members: members.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name, role: row.role, canViewAll: row.can_view_all, canManageEmergency: row.can_manage_emergency, isSupervised: row.is_supervised, linkedPatientId: row.linked_patient_id, patientIds: [...new Set([...row.patient_ids, ...(row.linked_patient_id ? [row.linked_patient_id] : [])])] })),
     invitations: invitations.rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name, role: row.role, canViewAll: row.can_view_all, canManageEmergency: row.can_manage_emergency, status: row.status, expiresAt: row.expires_at, patientIds: row.patient_ids, isMinor: row.is_minor, linkedPatientId: row.linked_patient_id })),
   };
+}
+
+export async function updateMemberVisibility(identity: CallerIdentity, memberId: string, input: { scope: 'all' | 'selected' | 'own'; patientIds: string[] }) {
+  const access = await context(identity);
+  if (access.role !== 'owner') throw new FamilyAccessPermissionError('family_access_manage_denied');
+  const client = await database!.connect();
+  try {
+    await client.query('BEGIN');
+    const target = await client.query<{ role: string; is_supervised: boolean; linked_patient_id: string | null }>(
+      `SELECT fm.role::text, COALESCE(ac.is_supervised, false) AS is_supervised,
+              (SELECT p.id FROM patients p WHERE p.family_id = fm.family_id AND p.linked_user_id = fm.user_id
+                ORDER BY p.created_at LIMIT 1) AS linked_patient_id
+         FROM family_memberships fm
+         LEFT JOIN auth_credentials ac ON ac.user_id = fm.user_id
+        WHERE fm.family_id = $1 AND fm.user_id = $2 FOR UPDATE OF fm`,
+      [access.family_id, memberId],
+    );
+    if (!target.rowCount) throw new FamilyAccessNotFoundError('family_member_not_found');
+    const member = target.rows[0];
+    if (memberId === access.user_id || member.role === 'owner') throw new FamilyAccessPermissionError('owner_access_protected');
+    if (member.is_supervised && input.scope !== 'own') throw new FamilyAccessPermissionError('supervised_access_protected');
+    if (input.scope === 'own' && !member.linked_patient_id) throw new FamilyAccessPermissionError('personal_profile_required');
+
+    const allowed = input.scope === 'all' ? [] : [...new Set([
+      ...(input.scope === 'selected' ? input.patientIds : []),
+      ...(member.linked_patient_id ? [member.linked_patient_id] : []),
+    ])];
+    if (input.scope !== 'all') {
+      if (!allowed.length) throw new FamilyAccessPermissionError('patient_access_required');
+      const valid = await client.query<{ id: string }>(
+        'SELECT id FROM patients WHERE family_id = $1 AND id = ANY($2::uuid[])',
+        [access.family_id, allowed],
+      );
+      if (valid.rowCount !== allowed.length) throw new FamilyAccessPermissionError('invalid_patient_permissions');
+    }
+    await client.query(
+      'UPDATE family_memberships SET can_view_all = $3 WHERE family_id = $1 AND user_id = $2',
+      [access.family_id, memberId, input.scope === 'all'],
+    );
+    if (input.scope !== 'all') {
+      await client.query(
+        `UPDATE patient_permissions pp
+            SET can_read = pp.patient_id = ANY($3::uuid[]),
+                can_write = CASE WHEN pp.patient_id = ANY($3::uuid[]) AND NOT $4::boolean THEN pp.can_write ELSE false END,
+                can_share = CASE WHEN pp.patient_id = ANY($3::uuid[]) AND NOT $4::boolean THEN pp.can_share ELSE false END
+           FROM patients p
+          WHERE p.id = pp.patient_id AND p.family_id = $1 AND pp.user_id = $2`,
+        [access.family_id, memberId, allowed, member.is_supervised],
+      );
+      await client.query(
+        `INSERT INTO patient_permissions (patient_id, user_id, can_read, can_write, can_share, granted_by)
+         SELECT p.id, $2, true, false, false, $3 FROM patients p
+          WHERE p.family_id = $1 AND p.id = ANY($4::uuid[])
+         ON CONFLICT (patient_id, user_id) DO NOTHING`,
+        [access.family_id, memberId, access.user_id, allowed],
+      );
+      await client.query(
+        `UPDATE medical_record_shares s SET revoked_at = now()
+          FROM patients p WHERE p.id = s.patient_id AND p.family_id = $1 AND s.created_by = $2
+            AND NOT (s.patient_id = ANY($3::uuid[])) AND s.revoked_at IS NULL`,
+        [access.family_id, memberId, allowed],
+      );
+    }
+    await client.query(
+      `INSERT INTO audit_events (actor_user_id, family_id, action, resource_type, resource_id, metadata)
+       VALUES ($1,$2,'family.member_visibility_changed','app_user',$3,$4::jsonb)`,
+      [access.user_id, access.family_id, memberId, JSON.stringify({ scope: input.scope, patientIds: allowed, supervised: member.is_supervised })],
+    );
+    await client.query('COMMIT');
+    return { memberId, scope: input.scope, patientIds: allowed };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function createFamilyInvitation(identity: CallerIdentity, input: {
@@ -84,9 +166,12 @@ export async function createFamilyInvitation(identity: CallerIdentity, input: {
     const safeRole = input.isMinor ? 'viewer' : input.role;
     const safeCanViewAll = input.isMinor ? false : input.canViewAll;
     const safeCanManageEmergency = input.isMinor ? false : input.canManageEmergency;
-    const safePatients = input.isMinor
+    const safePatients = input.isMinor || input.role === 'viewer'
       ? input.patients.map((item) => ({ ...item, canWrite: false, canShare: false }))
       : input.patients;
+    if (input.isMinor && (!input.linkedPatientId || safePatients.length !== 1 || safePatients[0].patientId !== input.linkedPatientId)) {
+      throw new FamilyAccessPermissionError('supervised_access_protected');
+    }
     const valid = safePatients.length ? await client.query<{ id: string }>(
       'SELECT id FROM patients WHERE family_id = $1 AND id = ANY($2::uuid[])', [access.family_id, input.patients.map((item) => item.patientId)],
     ) : { rowCount: 0 };

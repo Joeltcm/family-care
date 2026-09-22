@@ -2,7 +2,7 @@ import type { CallerIdentity } from '../auth.js';
 import { database } from '../database.js';
 import { encryptField, maskedField } from './field-encryption.js';
 
-type InsuranceContext = { user_id: string; family_id: string; can_manage: boolean };
+type InsuranceContext = { user_id: string; family_id: string; can_manage: boolean; can_view_all: boolean };
 
 export class InsurancePermissionError extends Error {}
 export class InsuranceNotFoundError extends Error {}
@@ -10,8 +10,8 @@ export class InsuranceNotFoundError extends Error {}
 async function context(identity: CallerIdentity) {
   if (!database) throw new Error('database_not_configured');
   const result = await database.query<InsuranceContext>(
-    `SELECT u.id AS user_id, fm.family_id,
-            (fm.role IN ('owner', 'caregiver') OR fm.can_view_all) AS can_manage
+    `SELECT u.id AS user_id, fm.family_id, fm.can_view_all,
+            (fm.role IN ('owner', 'caregiver') AND fm.can_view_all) AS can_manage
        FROM app_users u JOIN family_memberships fm ON fm.user_id = u.id
        LEFT JOIN auth_credentials ac ON ac.user_id = u.id
       WHERE (u.auth_subject = $1 OR lower(u.email) = lower($2))
@@ -25,16 +25,29 @@ async function context(identity: CallerIdentity) {
 
 export async function getInsurance(identity: CallerIdentity) {
   const access = await context(identity);
+  const visiblePatients = await database!.query<{ id: string }>(
+    `SELECT p.id FROM patients p
+       LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
+      WHERE p.family_id = $1
+        AND ($3::boolean OR p.linked_user_id = $2 OR COALESCE(pp.can_read, false))`,
+    [access.family_id, access.user_id, access.can_view_all],
+  );
+  const visibleIds = visiblePatients.rows.map((row) => row.id);
   const policies = await database!.query<{
     id: string; insurer_name: string; policy_number_encrypted: string; plan_name: string | null;
     effective_date: string | null; renewal_date: string | null; assistance_phone: string | null; notes: string | null;
-  }>(`SELECT id, insurer_name, policy_number_encrypted, plan_name, effective_date, renewal_date, assistance_phone, notes
-        FROM insurance_policies WHERE family_id = $1 ORDER BY renewal_date NULLS LAST, created_at`, [access.family_id]);
+  }>(`SELECT ip.id, ip.insurer_name, ip.policy_number_encrypted, ip.plan_name, ip.effective_date,
+             ip.renewal_date, ip.assistance_phone, ip.notes
+        FROM insurance_policies ip WHERE ip.family_id = $1
+          AND ($3::boolean OR EXISTS (SELECT 1 FROM insurance_beneficiaries b
+                                      WHERE b.policy_id = ip.id AND b.patient_id = ANY($2::uuid[])))
+        ORDER BY ip.renewal_date NULLS LAST, ip.created_at`, [access.family_id, visibleIds, access.can_view_all]);
   const ids = policies.rows.map((row) => row.id);
   const beneficiaries = ids.length ? await database!.query<{ policy_id: string; patient_id: string; legal_name: string; member_number_encrypted: string | null }>(
     `SELECT b.policy_id, b.patient_id, p.legal_name, b.member_number_encrypted
        FROM insurance_beneficiaries b JOIN patients p ON p.id = b.patient_id
-      WHERE b.policy_id = ANY($1::uuid[]) ORDER BY p.legal_name`, [ids],
+       WHERE b.policy_id = ANY($1::uuid[]) AND b.patient_id = ANY($2::uuid[])
+       ORDER BY p.legal_name`, [ids, visibleIds],
   ) : { rows: [] };
   const cases = ids.length ? await database!.query<{
     id: string; policy_id: string; patient_id: string; legal_name: string; case_type: 'authorization' | 'claim';
@@ -42,7 +55,8 @@ export async function getInsurance(identity: CallerIdentity) {
   }>(`SELECT c.id, c.policy_id, c.patient_id, p.legal_name, c.case_type, c.status,
              c.reference_number, c.amount::text, c.submitted_at, c.resolved_at
         FROM insurance_cases c JOIN patients p ON p.id = c.patient_id
-       WHERE c.policy_id = ANY($1::uuid[]) ORDER BY c.created_at DESC`, [ids]) : { rows: [] };
+       WHERE c.policy_id = ANY($1::uuid[]) AND c.patient_id = ANY($2::uuid[])
+       ORDER BY c.created_at DESC`, [ids, visibleIds]) : { rows: [] };
   return {
     canManage: access.can_manage,
     policies: policies.rows.map((policy) => ({

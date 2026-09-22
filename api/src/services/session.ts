@@ -261,13 +261,13 @@ export async function bootstrapSession(identity: CallerIdentity) {
     const patients = await client.query<PatientRow>(
       `SELECT p.id, p.legal_name, p.preferred_name, to_char(p.birth_date, 'YYYY-MM-DD') AS birth_date, p.blood_type,
               p.emergency_summary, p.allergies_summary, p.relationship_to_owner, p.linked_user_id,
-              (NOT $3::boolean AND (p.linked_user_id = $2 OR COALESCE(pp.can_write, false))) AS can_write,
-              (NOT $3::boolean AND COALESCE(pp.can_share, false)) AS can_share
+              (NOT $3::boolean AND fm.role NOT IN ('viewer', 'dependent') AND (p.linked_user_id = $2 OR COALESCE(pp.can_write, false))) AS can_write,
+              (NOT $3::boolean AND fm.role NOT IN ('viewer', 'dependent') AND COALESCE(pp.can_share, false)) AS can_share
          FROM patients p
          JOIN family_memberships fm ON fm.family_id = p.family_id AND fm.user_id = $2
          LEFT JOIN patient_permissions pp ON pp.patient_id = p.id AND pp.user_id = $2
         WHERE p.family_id = $1
-          AND (fm.can_view_all OR pp.can_read)
+          AND (fm.can_view_all OR p.linked_user_id = $2 OR pp.can_read)
         ORDER BY CASE p.relationship_to_owner WHEN 'self' THEN 0 WHEN 'spouse' THEN 1 WHEN 'child' THEN 2 ELSE 3 END,
                  p.created_at`,
       [family.id, user.id, supervised],

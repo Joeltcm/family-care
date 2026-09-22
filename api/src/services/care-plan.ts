@@ -9,6 +9,7 @@ type AccessRow = {
   can_read: boolean | null;
   can_write: boolean | null;
   can_view_all: boolean;
+  role: string;
   timezone: string;
   is_supervised: boolean;
 };
@@ -41,7 +42,7 @@ export class CarePlanNotFoundError extends Error {}
 async function accessForPatient(client: PoolClient, identity: CallerIdentity, patientId: string, lock = false) {
   const result = await client.query<AccessRow>(
     `SELECT u.id AS user_id, u.timezone, p.family_id, p.linked_user_id,
-            pp.can_read, pp.can_write, fm.can_view_all, COALESCE(ac.is_supervised, false) AS is_supervised
+            pp.can_read, pp.can_write, fm.can_view_all, fm.role, COALESCE(ac.is_supervised, false) AS is_supervised
        FROM app_users u
        JOIN family_memberships fm ON fm.user_id = u.id
        JOIN patients p ON p.family_id = fm.family_id AND p.id = $2
@@ -59,7 +60,7 @@ function mayRead(access: AccessRow | undefined) {
 }
 
 function mayWrite(access: AccessRow | undefined) {
-  return Boolean(access && !access.is_supervised && (access.linked_user_id === access.user_id || access.can_write));
+  return Boolean(access && !access.is_supervised && access.role !== 'viewer' && access.role !== 'dependent' && (access.linked_user_id === access.user_id || access.can_write));
 }
 
 export async function getCarePlan(identity: CallerIdentity, patientId: string) {

@@ -71,7 +71,9 @@ import {
   createFamilyInvitationActivation,
   bootstrapConfiguredFamilyInvitations,
   FamilyAccessPermissionError,
+  FamilyAccessNotFoundError,
   getFamilyAccess,
+  updateMemberVisibility,
 } from './services/family-access.js';
 import {
   activateInvitation,
@@ -446,6 +448,15 @@ const familyInvitationSchema = z.object({
   if (value.patients.some((item) => item.canShare && !item.canWrite)) context.addIssue({ code: 'custom', message: 'share_requires_write', path: ['patients'] });
 });
 
+const memberVisibilitySchema = z.object({
+  scope: z.enum(['all', 'selected', 'own']),
+  patientIds: z.array(z.string().uuid()).max(50),
+}).strict().superRefine((value, context) => {
+  if (value.scope === 'selected' && !value.patientIds.length) context.addIssue({ code: 'custom', message: 'patient_access_required', path: ['patientIds'] });
+  if (value.scope !== 'selected' && value.patientIds.length) context.addIssue({ code: 'custom', message: 'unexpected_patient_ids', path: ['patientIds'] });
+  if (new Set(value.patientIds).size !== value.patientIds.length) context.addIssue({ code: 'custom', message: 'duplicate_patient_ids', path: ['patientIds'] });
+});
+
 app.patch('/v1/patients/:patientId/profile', { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (request, reply) => {
   const identity = requireCallerIdentity(request, reply);
   if (!identity) return;
@@ -643,6 +654,20 @@ app.get('/v1/family/access', async (request, reply) => {
   try { return await getFamilyAccess(identity); }
   catch (error) {
     if (error instanceof FamilyAccessPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.patch('/v1/family/members/:memberId/access', { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({ memberId: z.string().uuid() }).safeParse(request.params);
+  const body = memberVisibilitySchema.safeParse(request.body);
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'invalid_member_access', issues: body.success ? [] : body.error.issues });
+  try { return await updateMemberVisibility(identity, params.data.memberId, body.data); }
+  catch (error) {
+    if (error instanceof FamilyAccessPermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof FamilyAccessNotFoundError) return reply.code(404).send({ error: error.message });
     throw error;
   }
 });

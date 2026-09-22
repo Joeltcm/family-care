@@ -59,7 +59,7 @@ export async function updatePatientProfile(
       [identity.subject, patientId, identity.email],
     );
     const permission = access.rows[0];
-    if (!permission || permission.is_supervised || (permission.linked_user_id !== permission.user_id && !permission.can_write)) {
+    if (!permission || permission.is_supervised || permission.role === 'viewer' || permission.role === 'dependent' || (permission.linked_user_id !== permission.user_id && !permission.can_write)) {
       throw new PatientProfilePermissionError('profile_update_not_allowed');
     }
 
