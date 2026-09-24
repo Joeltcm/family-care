@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import type { CallerIdentity } from '../auth.js';
 import { database } from '../database.js';
+import { getHealwaveCarePlan, isHealwavePatient } from './healwave.js';
 
 type AccessRow = {
   user_id: string;
@@ -12,6 +13,8 @@ type AccessRow = {
   role: string;
   timezone: string;
   is_supervised: boolean;
+  legal_name: string;
+  relationship_to_owner: string | null;
 };
 
 export type MedicationInput = {
@@ -41,7 +44,7 @@ export class CarePlanNotFoundError extends Error {}
 
 async function accessForPatient(client: PoolClient, identity: CallerIdentity, patientId: string, lock = false) {
   const result = await client.query<AccessRow>(
-    `SELECT u.id AS user_id, u.timezone, p.family_id, p.linked_user_id,
+    `SELECT u.id AS user_id, u.timezone, p.family_id, p.linked_user_id, p.legal_name, p.relationship_to_owner,
             pp.can_read, pp.can_write, fm.can_view_all, fm.role, COALESCE(ac.is_supervised, false) AS is_supervised
        FROM app_users u
        JOIN family_memberships fm ON fm.user_id = u.id
@@ -131,7 +134,7 @@ export async function getCarePlan(identity: CallerIdentity, patientId: string) {
       eventsByMedication.set(row.medication_id, values);
     }
 
-    return {
+    const local = {
       timezone: access!.timezone,
       medications: medications.rows.map((row) => ({
         id: row.id,
@@ -146,6 +149,7 @@ export async function getCarePlan(identity: CallerIdentity, patientId: string) {
         createdAt: row.created_at,
         schedules: schedulesByMedication.get(row.id) || [],
         events: eventsByMedication.get(row.id) || [],
+        source: 'family_care',
       })),
       appointments: appointments.rows.map((row) => ({
         id: row.id,
@@ -159,8 +163,22 @@ export async function getCarePlan(identity: CallerIdentity, patientId: string) {
         reminderMinutes: row.reminder_minutes,
         encounterId: row.encounter_id,
         createdAt: row.created_at,
+        source: 'family_care',
       })),
+      healwave: { status: 'not_applicable' as const },
     };
+    if (!isHealwavePatient({ legalName: access!.legal_name, relationshipToOwner: access!.relationship_to_owner })) return local;
+    try {
+      const external = await getHealwaveCarePlan();
+      return {
+        ...local,
+        medications: [...local.medications, ...external.medications],
+        appointments: [...local.appointments, ...external.appointments],
+        healwave: { status: 'connected' as const },
+      };
+    } catch {
+      return { ...local, healwave: { status: 'unavailable' as const } };
+    }
   } finally {
     client.release();
   }

@@ -15,6 +15,7 @@ import {
   createEncounter,
   createLabReport,
   extractHemogramFromImage,
+  getHealwaveDocumentForPatient,
   getClinicalRecords,
   getDocumentVersion,
   HemogramExtractionError,
@@ -22,7 +23,7 @@ import {
   setLabReportReviewed,
   updateLabResult,
 } from './services/clinical-records.js';
-import { buildHealwaveReadOnlyStatus } from './services/healwave.js';
+import { buildHealwaveReadOnlyStatus, HealwaveUnavailableError } from './services/healwave.js';
 import {
   CarePlanNotFoundError,
   CarePlanPermissionError,
@@ -483,6 +484,24 @@ app.get('/v1/patients/:patientId/clinical-records', async (request, reply) => {
     return await getClinicalRecords(identity, params.data.patientId);
   } catch (error) {
     if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
+    throw error;
+  }
+});
+
+app.get('/v1/patients/:patientId/healwave/documents/:documentId', async (request, reply) => {
+  const identity = requireCallerIdentity(request, reply);
+  if (!identity) return;
+  const params = z.object({
+    patientId: z.string().uuid(),
+    documentId: z.string().regex(/^[A-Za-z0-9_-]{20,200}$/),
+  }).safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ error: 'invalid_healwave_document' });
+  try {
+    return await getHealwaveDocumentForPatient(identity, params.data.patientId, params.data.documentId);
+  } catch (error) {
+    if (error instanceof ClinicalRecordPermissionError) return reply.code(403).send({ error: error.message });
+    if (error instanceof ClinicalRecordNotFoundError) return reply.code(404).send({ error: error.message });
+    if (error instanceof HealwaveUnavailableError) return reply.code(error.status === 404 ? 404 : 502).send({ error: 'healwave_document_unavailable' });
     throw error;
   }
 });

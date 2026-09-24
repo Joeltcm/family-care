@@ -10,6 +10,7 @@ export type ClinicalEncounter = {
   admittedAt: string | null;
   dischargedAt: string | null;
   dischargeSummary: string | null;
+  source: 'family_care' | 'healwave';
 };
 
 export type LabResult = {
@@ -23,6 +24,7 @@ export type LabResult = {
   referenceHigh: number | null;
   abnormalFlag: string | null;
   correctedByFamily: boolean;
+  source?: 'family_care' | 'healwave';
 };
 
 export type LabReport = {
@@ -34,6 +36,7 @@ export type LabReport = {
   documentId: string | null;
   reviewedByUser: boolean;
   results: LabResult[];
+  source: 'family_care' | 'healwave';
 };
 
 export type ClinicalDocument = {
@@ -45,15 +48,35 @@ export type ClinicalDocument = {
   storedBytes: number;
   versionCount: number;
   hasOptimized: boolean;
+  source: 'family_care' | 'healwave';
+  downloadUrl: string;
+};
+
+export type HealwaveSummary = {
+  status: 'not_applicable' | 'unavailable' | 'connected';
+  profile?: {
+    diagnosis_date?: string | null;
+    doctor_name?: string | null;
+    doctor_specialty?: string | null;
+    disease_activity?: string | null;
+    affected_joints?: unknown[] | null;
+    comorbidities?: string | null;
+    family_history?: string | null;
+    updated_at?: string | null;
+  };
+  conditions?: Array<{ id: string; name: string; status?: string | null; start_date?: string | null }>;
+  inBody?: Array<{ id: string; date?: string | null; metrics?: Record<string, unknown> }>;
+  syncedAt?: string;
 };
 
 export type ClinicalRecords = {
   encounters: ClinicalEncounter[];
   labReports: LabReport[];
   documents: ClinicalDocument[];
+  healwave: HealwaveSummary;
 };
 
-export const emptyClinicalRecords: ClinicalRecords = { encounters: [], labReports: [], documents: [] };
+export const emptyClinicalRecords: ClinicalRecords = { encounters: [], labReports: [], documents: [], healwave: { status: 'not_applicable' } };
 
 export async function fetchClinicalRecords(patientId: string, signal?: AbortSignal) {
   const response = await fetch(`/api/family-care/patients/${encodeURIComponent(patientId)}/clinical-records`, {

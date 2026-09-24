@@ -20,7 +20,9 @@ const envSchema = z.object({
   DEEPSEEK_API_KEY: z.string().optional(),
   DEEPSEEK_ENABLED: z.string().default('false').transform((value) => value === 'true'),
   HEALWAVE_READONLY_ENABLED: z.string().default('false').transform((value) => value === 'true'),
-  HEALWAVE_READONLY_DATABASE_URL: z.string().url().optional(),
+  HEALWAVE_API_BASE_URL: z.string().url().optional(),
+  HEALWAVE_API_CLIENT_ID: z.string().min(1).default('familycare'),
+  HEALWAVE_API_HMAC_SECRET: z.string().min(16).optional(),
   SOS_SIMULATION_MODE: z.string().default('true').transform((value) => value !== 'false'),
   PUSH_PROVIDER: z.string().optional(),
   VAPID_PUBLIC_KEY: z.string().min(40).optional(),
@@ -41,7 +43,12 @@ export const capabilities = {
   temporaryMedicalShares: Boolean(config.DATABASE_URL && (config.FAMILY_CARE_SERVICE_KEY || config.FAMILY_CARE_CLOUDFLARE_SERVICE_KEY) && config.PUBLIC_API_URL),
   objectStorage: Boolean(config.R2_ACCOUNT_ID && config.R2_BUCKET && config.R2_ACCESS_KEY_ID && config.R2_SECRET_ACCESS_KEY),
   deidentifiedAi: Boolean(config.DEEPSEEK_ENABLED && config.DEEPSEEK_API_KEY),
-  healwaveReadOnly: Boolean(config.HEALWAVE_READONLY_ENABLED && config.HEALWAVE_READONLY_DATABASE_URL),
+  healwaveReadOnly: Boolean(
+    config.HEALWAVE_READONLY_ENABLED
+    && config.HEALWAVE_API_BASE_URL
+    && config.HEALWAVE_API_CLIENT_ID
+    && config.HEALWAVE_API_HMAC_SECRET,
+  ),
   pushNotifications: Boolean(config.VAPID_PUBLIC_KEY && config.VAPID_PRIVATE_KEY),
   insuranceVault: Boolean(config.FIELD_ENCRYPTION_KEY),
   realSos: !config.SOS_SIMULATION_MODE && Boolean(

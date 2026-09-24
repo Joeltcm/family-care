@@ -28,6 +28,7 @@ export type Medication = {
   createdAt: string;
   schedules: MedicationSchedule[];
   events: MedicationEvent[];
+  source: 'family_care' | 'healwave';
 };
 
 export type Appointment = {
@@ -42,9 +43,15 @@ export type Appointment = {
   reminderMinutes: number[];
   encounterId: string | null;
   createdAt: string;
+  source: 'family_care' | 'healwave';
 };
 
-export type CarePlan = { timezone: string; medications: Medication[]; appointments: Appointment[] };
+export type CarePlan = {
+  timezone: string;
+  medications: Medication[];
+  appointments: Appointment[];
+  healwave: { status: 'not_applicable' | 'unavailable' | 'connected' };
+};
 export type PatientCarePlan = { patient: FamilyCarePatient; plan: CarePlan };
 
 export async function loadCarePlans(patients: FamilyCarePatient[]) {

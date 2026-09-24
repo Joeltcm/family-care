@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import type { CallerIdentity } from '../auth.js';
 import { config } from '../config.js';
 import { database } from '../database.js';
+import { getHealwaveDocument, getPatientSnapshot, isHealwavePatient } from './healwave.js';
 
 type AccessRow = {
   user_id: string;
@@ -12,6 +13,8 @@ type AccessRow = {
   can_view_all: boolean;
   role: string;
   is_supervised: boolean;
+  legal_name: string;
+  relationship_to_owner: string | null;
 };
 
 export type EncounterInput = {
@@ -217,7 +220,7 @@ export async function extractHemogramFromImage(identity: CallerIdentity, patient
 
 async function accessForPatient(client: PoolClient, identity: CallerIdentity, patientId: string, lock = false) {
   const result = await client.query<AccessRow>(
-    `SELECT u.id AS user_id, p.family_id, p.linked_user_id,
+    `SELECT u.id AS user_id, p.family_id, p.linked_user_id, p.legal_name, p.relationship_to_owner,
             pp.can_read, pp.can_write, fm.can_view_all, fm.role, COALESCE(ac.is_supervised, false) AS is_supervised
        FROM app_users u
        JOIN family_memberships fm ON fm.user_id = u.id
@@ -319,7 +322,7 @@ export async function getClinicalRecords(identity: CallerIdentity, patientId: st
       resultsByReport.set(row.report_id, values);
     }
 
-    return {
+    const local = {
       encounters: encounters.rows.map((row) => ({
         id: row.id,
         occurredAt: row.occurred_at,
@@ -332,6 +335,7 @@ export async function getClinicalRecords(identity: CallerIdentity, patientId: st
         admittedAt: row.admitted_at,
         dischargedAt: row.discharged_at,
         dischargeSummary: row.discharge_summary,
+        source: 'family_care',
       })),
       labReports: reports.rows.map((row) => ({
         id: row.id,
@@ -342,6 +346,7 @@ export async function getClinicalRecords(identity: CallerIdentity, patientId: st
         documentId: row.document_id,
         reviewedByUser: row.reviewed_by_user,
         results: resultsByReport.get(row.id) || [],
+        source: 'family_care',
       })),
       documents: documents.rows.map((row) => ({
         id: row.id,
@@ -352,8 +357,38 @@ export async function getClinicalRecords(identity: CallerIdentity, patientId: st
         storedBytes: Number(row.stored_bytes),
         versionCount: row.version_count,
         hasOptimized: row.has_optimized,
+        source: 'family_care',
+        downloadUrl: `/api/family-care/documents/${encodeURIComponent(row.id)}`,
       })),
+      healwave: { status: 'not_applicable' as const },
     };
+    if (!isHealwavePatient({ legalName: access!.legal_name, relationshipToOwner: access!.relationship_to_owner })) return local;
+    try {
+      const external = await getPatientSnapshot(patientId);
+      return {
+        encounters: [...local.encounters, ...external.encounters],
+        labReports: [...local.labReports, ...external.labReports],
+        documents: [...local.documents, ...external.documents],
+        healwave: external.healwave,
+      };
+    } catch {
+      return { ...local, healwave: { status: 'unavailable' as const } };
+    }
+  } finally {
+    client.release();
+  }
+}
+
+export async function getHealwaveDocumentForPatient(identity: CallerIdentity, patientId: string, documentId: string) {
+  if (!database) throw new Error('database_not_configured');
+  const client = await database.connect();
+  try {
+    const access = await accessForPatient(client, identity, patientId);
+    if (!mayRead(access)) throw new ClinicalRecordPermissionError('clinical_records_read_not_allowed');
+    if (!isHealwavePatient({ legalName: access!.legal_name, relationshipToOwner: access!.relationship_to_owner })) {
+      throw new ClinicalRecordNotFoundError('healwave_document_not_found');
+    }
+    return await getHealwaveDocument(documentId);
   } finally {
     client.release();
   }

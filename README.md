@@ -102,7 +102,18 @@ nombres de medicamentos. Configura `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y
 
 El proyecto `family-care` utiliza un servicio `api` y PostgreSQL. El contenedor ejecuta las migraciones pendientes antes de iniciar el servidor. La PWA usa proxies propios para la salud del servicio y la sesión; la identidad autenticada y la clave privada nunca se aceptan desde estado controlado por el navegador.
 
-Mantén `SOS_SIMULATION_MODE=true`, `DEEPSEEK_ENABLED=false` y `HEALWAVE_READONLY_ENABLED=false` hasta completar consentimiento, contactos verificados y revisiones de seguridad clínica. El almacenamiento de archivos de la PWA usa un binding R2 privado del proveedor activo; las variables `R2_*` de Railway quedan reservadas para una futura integración directa de la API.
+Healwave se integra exclusivamente desde el backend mediante HMAC-SHA256 y en
+modo de solo lectura. La conexión requiere `HEALWAVE_READONLY_ENABLED=true`,
+`HEALWAVE_API_BASE_URL`, `HEALWAVE_API_CLIENT_ID` y
+`HEALWAVE_API_HMAC_SECRET`. El secreto nunca debe llegar al navegador. La
+fuente solo se activa para el perfil de cónyuge cuyo nombre coincide con
+`FAMILY_CARE_SPOUSE_LEGAL_NAME`; además se aplican los permisos habituales de
+Family Care antes de solicitar datos o documentos.
+
+Mantén `SOS_SIMULATION_MODE=true` hasta verificar contactos y proveedores de
+emergencia. El almacenamiento de archivos de la PWA usa un binding R2 privado
+del proveedor activo; las variables `R2_*` de Railway quedan reservadas para
+una futura integración directa de la API.
 
 No guardes credenciales en Git ni las envíes por chat. Configúralas directamente en Railway/Cloudflare.
 
