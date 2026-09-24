@@ -64,6 +64,11 @@ export function Dashboard({ profile, family, accountName, patients, selectedPati
         const include = (patient: FamilyCarePatient) => family || patient.id === selectedPatient?.id;
         return { care: data?.care.filter(({ patient }) => include(patient)) || [], clinical: data?.clinical.filter(({ patient }) => include(patient)) || [] };
     }, [data, family, selectedPatient?.id]);
+    const healwaveStatus = visible.clinical.some(({ records }) => records.healwave.status === 'connected')
+        ? 'connected'
+        : visible.clinical.some(({ records }) => records.healwave.status === 'unavailable')
+            ? 'unavailable'
+            : 'not_applicable';
     const appointments = visible.care.flatMap(({ patient, plan }) => plan.appointments.map((appointment) => ({ patient, appointment })));
     const encounters = visible.clinical.flatMap(({ records }) => records.encounters);
     const medications = visible.care.flatMap(({ plan }) => plan.medications);
@@ -81,6 +86,7 @@ export function Dashboard({ profile, family, accountName, patients, selectedPati
     const message = state === 'loading' ? 'Cargando datos del expediente…' : state === 'error' ? 'No pudimos cargar el resumen. Vuelve a Inicio para intentarlo de nuevo.' : 'Sin registros todavía.';
     return <>
     <PageHeading eyebrow="RESUMEN FAMILIAR" title={family ? `Hola, ${accountName.split(' ')[0]}` : `Resumen de ${profile}`} copy="Integra los registros propios de Family Care y, para Eileen, la información de Healwave en modo de solo lectura." action={<div className="period-control"><button type="button" aria-label="Año anterior" onClick={() => setYear((value) => value - 1)}>‹</button><span>Resumen {year}</span><button type="button" aria-label="Año siguiente" onClick={() => setYear((value) => value + 1)}>›</button></div>}/>
+    {state === 'ready' && healwaveStatus !== 'not_applicable' && <p className="dashboard-data-message" role={healwaveStatus === 'unavailable' ? 'alert' : undefined}>{healwaveStatus === 'connected' ? '✓ Healwave conectado en modo de solo lectura.' : 'No fue posible conectar con Healwave. Los datos propios de Family Care continúan disponibles.'}</p>}
     {state === 'error' && <p className="dashboard-data-message" role="alert">{message}</p>}
     <section className="metric-grid" aria-label="Resumen anual">{metrics.map((metric) => <article className={`metric-card ${metric.tone}`} key={metric.label}><div className="metric-topline"><span className="metric-dot"/><span>{year}</span></div><strong>{state === 'ready' ? metric.value : '—'}</strong><h2>{metric.label}</h2><p>{state === 'ready' ? metric.detail : message}</p></article>)}</section>
     <section className="dashboard-grid"><div className="primary-column">

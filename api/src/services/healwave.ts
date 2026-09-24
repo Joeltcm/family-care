@@ -145,8 +145,11 @@ function normalizeName(value: string) {
 }
 
 export function isHealwavePatient(patient: HealwavePatientIdentity) {
-  if (!capabilities.healwaveReadOnly || patient.relationshipToOwner !== 'spouse') return false;
+  if (!capabilities.healwaveReadOnly) return false;
   const configuredName = config.FAMILY_CARE_SPOUSE_LEGAL_NAME;
+  // The configured legal name is the stable binding for this single-patient
+  // integration. The editable relationship label is descriptive data and may
+  // be localized or left blank; it must not silently disable Healwave.
   return Boolean(configuredName && normalizeName(configuredName) === normalizeName(patient.legalName));
 }
 
