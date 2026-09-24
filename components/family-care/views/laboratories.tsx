@@ -68,7 +68,7 @@ function resultReading(result: LabResult) {
 
 function RheumatologyOverview({ records }: { records: ClinicalRecords }) {
     const activity = records.healwave.profile?.disease_activity?.trim();
-    const updatedAt = records.healwave.profile?.updated_at || records.healwave.syncedAt;
+    const updatedAt = records.healwave.profile?.updated_at;
     const clinicalMeasures: Marker[] = [
         { code: 'DAS28', label: 'DAS28', aliases: ['DAS28', 'DAS 28', 'DAS28 CRP', 'DAS28 ESR', 'DAS28 PCR', 'DAS28 VSG'] },
         { code: 'CDAI', label: 'CDAI', aliases: ['CDAI'] },
@@ -78,7 +78,7 @@ function RheumatologyOverview({ records }: { records: ClinicalRecords }) {
     return <div className="rheumatology-overview">
       <div className="rheumatology-heading"><div><p className="eyebrow">SEGUIMIENTO REUMATOLÓGICO</p><h2>Artritis reumatoide</h2><p>Vista organizada con los datos reales del expediente y de Healwave.</p></div><span className="healwave-inline">Healwave · solo lectura</span></div>
       <div className="rheumatology-summary-grid">
-        <article className="disease-activity-card"><small>ACTIVIDAD CONSIGNADA</small><strong>{activity || 'Sin registro'}</strong><span>{updatedAt ? `Actualizado ${shortDate(updatedAt)}` : 'Pendiente de registrar en Healwave'}</span></article>
+        <article className="disease-activity-card"><small>ACTIVIDAD CONSIGNADA</small><strong>{activity || 'Sin registro'}</strong><span>{updatedAt ? `Actualizado ${shortDate(updatedAt)}` : activity ? 'Sin fecha clínica disponible' : 'Pendiente de registrar en Healwave'}</span></article>
         <article className="clinical-score-card"><div><small>EVALUACIONES CLÍNICAS</small><strong>Actividad compuesta</strong><p>DAS28, CDAI, SDAI y RAPID3 combinan información clínica; Family Care no los estima con resultados incompletos.</p></div><div className="score-list">{clinicalMeasures.map((measure) => { const latest = latestResult(records.labReports, measure); return <span key={measure.code}><b>{measure.label}</b><em>{latest ? resultReading(latest.result) : 'No registrado'}</em></span>; })}</div></article>
       </div>
       <div className="rheumatology-groups">{rheumatologyGroups.map((group) => <section key={group.title} className="rheumatology-group"><div><h3>{group.title}</h3><p>{group.copy}</p></div><div className="rheumatology-marker-grid">{group.markers.map((item) => { const latest = latestResult(records.labReports, item); return <article className={latest?.result.abnormalFlag ? 'rheumatology-marker flagged' : 'rheumatology-marker'} key={item.code}><small>{item.label}</small><strong>{latest ? resultReading(latest.result) : 'Sin registros'}</strong><span>{latest ? `${shortDate(latest.report.collectedAt)} · ${latest.report.source === 'healwave' ? 'Healwave' : 'Family Care'}` : 'Se mostrará al estar disponible'}</span></article>; })}</div></section>)}</div>
